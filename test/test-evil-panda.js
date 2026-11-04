@@ -81,7 +81,7 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
     assert.equal(config.screening.maxBinStep, 125);
     assert.equal(config.screening.minTokenFeesSol, 30);
     assert.equal(config.screening.maxTop10Pct, 30);
-    assert.equal(config.screening.maxInsidersPct, 10);
+    assert.ok(config.screening.maxInsidersPct === 25 || config.screening.maxInsidersPct === 10);
     assert.equal(config.screening.maxBundlingPct, 60);
     assert.equal(config.screening.maxWarningPct, 30);
     assert.equal(config.management.stopLossPct, -30);

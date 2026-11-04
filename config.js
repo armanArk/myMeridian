@@ -152,7 +152,7 @@ export const config = {
     minVolume30m:      u.minVolume30m      ?? 12000, // min 30m volume ($)
     minVolume24h:      u.minVolume24h      ?? 1_000_000, // min 24h volume ($)
     minVolatility:     u.minVolatility     ?? 1, // min volatility score
-    maxInsidersPct:    u.maxInsidersPct    ?? 10, // max insider holders %
+    maxInsidersPct:    u.maxInsidersPct    ?? 25, // max insider holders % (tolerates rugcheck/clustering false positives)
     maxBundlingPct:    u.maxBundlingPct    ?? 60, // max bundled sniper supply %
     maxWarningPct:     u.maxWarningPct     ?? 30, // max security warning score %
     loneCandidateMinDegen: u.loneCandidateMinDegen ?? 50, // degen score that lets a SOLO candidate deploy without a narrative

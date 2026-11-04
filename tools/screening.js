@@ -490,15 +490,40 @@ export async function discoverPools({
       : null,
   ].filter(Boolean).join("&&");
 
-  const data = await fetchPoolDiscoveryPage({
-    page_size,
-    filters,
-    timeframe: s.timeframe,
-    category: s.category,
-    sort_by: s.sortBy || "volume:desc",
-  });
+  const [dataPrimary, data24h] = await Promise.all([
+    fetchPoolDiscoveryPage({
+      page_size,
+      filters,
+      timeframe: s.timeframe,
+      category: s.category,
+      sort_by: s.sortBy || "volume:desc",
+    }),
+    s.timeframe !== "24h"
+      ? fetchPoolDiscoveryPage({
+          page_size,
+          filters,
+          timeframe: "24h",
+          category: s.category,
+          sort_by: s.sortBy || "volume:desc",
+        }).catch(() => ({ data: [] }))
+      : Promise.resolve({ data: [] }),
+  ]);
 
-  let rawPools = Array.isArray(data.data) ? data.data : [];
+  const poolMap = new Map();
+  for (const pool of (dataPrimary?.data || [])) {
+    pool.volume_30m = numeric(pool.volume);
+    poolMap.set(pool.pool_address, pool);
+  }
+  for (const pool of (data24h?.data || [])) {
+    if (poolMap.has(pool.pool_address)) {
+      poolMap.get(pool.pool_address).volume_24h = numeric(pool.volume);
+    } else {
+      pool.volume_24h = numeric(pool.volume);
+      poolMap.set(pool.pool_address, pool);
+    }
+  }
+  let rawPools = Array.from(poolMap.values());
+  const data = { total: rawPools.length, data: rawPools };
 
   if (config.screening.useDiscordSignals) {
     const signalCandidates = await fetchDiscordSignalCandidates().catch((error) => {
