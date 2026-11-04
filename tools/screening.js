@@ -137,7 +137,7 @@ function getRawPoolScreeningRejectReason(pool, s) {
   const binStep = numeric(pool?.dlmm_params?.bin_step);
   const tvl = numeric(pool?.tvl ?? pool?.active_tvl);
   const feeActiveTvlRatio = numeric(pool?.fee_active_tvl_ratio);
-  const volatility = numeric(pool?.volatility);
+  const volatility = numeric(pool?.volatility ?? pool?.volatility_24h);
   const volume = numeric(pool?.volume);
   const holders = numeric(pool?.base_token_holders);
   const mcap = numeric(base?.market_cap);
@@ -512,13 +512,20 @@ export async function discoverPools({
   const poolMap = new Map();
   for (const pool of (dataPrimary?.data || [])) {
     pool.volume_30m = numeric(pool.volume);
+    pool.volatility_30m = numeric(pool.volatility);
     poolMap.set(pool.pool_address, pool);
   }
   for (const pool of (data24h?.data || [])) {
     if (poolMap.has(pool.pool_address)) {
-      poolMap.get(pool.pool_address).volume_24h = numeric(pool.volume);
+      const existing = poolMap.get(pool.pool_address);
+      existing.volume_24h = numeric(pool.volume);
+      existing.volatility_24h = numeric(pool.volatility);
+      if (!existing.volatility || existing.volatility <= 0) {
+        existing.volatility = numeric(pool.volatility);
+      }
     } else {
       pool.volume_24h = numeric(pool.volume);
+      pool.volatility_24h = numeric(pool.volatility);
       poolMap.set(pool.pool_address, pool);
     }
   }

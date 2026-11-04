@@ -142,7 +142,23 @@ async function validateDeployPoolThresholds(args) {
     }
   }
 
-  const volatility = poolDetailVolatility(volatilityDetail);
+  let volatility = poolDetailVolatility(volatilityDetail);
+  if (volatility == null || volatility <= 0) {
+    try {
+      const fallback24h = await fetchFreshPoolDetail(args.pool_address, "24h");
+      const v24h = poolDetailVolatility(fallback24h);
+      if (v24h != null && v24h > 0) {
+        volatility = v24h;
+        volatilityDetail = fallback24h;
+      }
+    } catch (_) {}
+  }
+  if (volatility == null || volatility <= 0) {
+    const passedVol = Number(args.volatility);
+    if (Number.isFinite(passedVol) && passedVol > 0) {
+      volatility = passedVol;
+    }
+  }
   if (volatility == null || volatility <= 0) {
     return {
       pass: false,
@@ -172,6 +188,7 @@ async function validateDeployPoolThresholds(args) {
     entry_tvl: tvl,
     entry_volume: numberOrNull(detail?.volume),
     entry_holders: numberOrNull(detail?.base_token_holders ?? detail?.token_x?.holders),
+    volatility: volatility,
   };
 
   return { pass: true, entryMarketData };

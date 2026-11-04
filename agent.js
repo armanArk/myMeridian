@@ -179,8 +179,9 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
   // destructive tool twice (e.g. deploy twice, swap twice after auto-swap)
   const ONCE_PER_SESSION = new Set(["deploy_position", "swap_token", "close_position"]);
   // These lock after first attempt regardless of success — retrying them is always wrong
-  const NO_RETRY_TOOLS = new Set(["deploy_position"]);
+  const NO_RETRY_TOOLS = new Set();
   const firedOnce = new Set();
+  const attemptedDeployPools = new Set();
   const mustUseRealTool = shouldRequireRealToolUse(goal, agentType, interactive);
   let sawToolCall = false;
   let noToolRetryCount = 0;
@@ -352,6 +353,25 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
           }
         }
 
+        // Prevent retrying the same pool if it was blocked/failed
+        if (functionName === "deploy_position") {
+          const poolKey = functionArgs?.pool_address;
+          if (poolKey && attemptedDeployPools.has(poolKey)) {
+            log("agent", `Blocked retry of same pool ${poolKey} for deploy_position`);
+            const blockedResult = {
+              blocked: true,
+              reason: `Pool ${poolKey} was already attempted this session and failed/blocked — do not retry the same pool. Select an alternative qualified candidate or stop.`,
+            };
+            await onToolFinish?.({ name: functionName, args: functionArgs, result: blockedResult, success: false, step });
+            return {
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(blockedResult),
+            };
+          }
+          if (poolKey) attemptedDeployPools.add(poolKey);
+        }
+
         // Block once-per-session tools from firing a second time
         if (ONCE_PER_SESSION.has(functionName) && firedOnce.has(functionName)) {
           log("agent", `Blocked duplicate ${functionName} call — already executed this session`);
@@ -379,10 +399,18 @@ export async function agentLoop(goal, maxSteps = config.llm.maxSteps, sessionHis
           step,
         });
 
-        // Lock deploy_position after first attempt regardless of outcome — retrying is never right
-        // For close/swap: only lock on success so genuine failures can be retried
-        if (NO_RETRY_TOOLS.has(functionName)) firedOnce.add(functionName);
-        else if (ONCE_PER_SESSION.has(functionName) && result.success === true) firedOnce.add(functionName);
+        // Lock deploy_position once a position is successfully opened or after 3 failed pool attempts
+        if (functionName === "deploy_position") {
+          if (result?.success === true) {
+            firedOnce.add(functionName);
+          } else if (attemptedDeployPools.size >= 3) {
+            firedOnce.add(functionName);
+          }
+        } else if (NO_RETRY_TOOLS.has(functionName)) {
+          firedOnce.add(functionName);
+        } else if (ONCE_PER_SESSION.has(functionName) && result?.success === true) {
+          firedOnce.add(functionName);
+        }
 
         return {
           role: "tool",
