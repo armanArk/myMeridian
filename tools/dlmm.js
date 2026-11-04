@@ -80,11 +80,10 @@ async function getDLMM() {
 let _connection = null;
 let _wallet = null;
 
+import { getConnection as getRpcConnection } from "../standalone/rpc.js";
+
 function getConnection() {
-  if (!_connection) {
-    _connection = new Connection(process.env.RPC_URL, "confirmed");
-  }
-  return _connection;
+  return getRpcConnection();
 }
 
 function getWallet() {

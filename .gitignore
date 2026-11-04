@@ -47,6 +47,7 @@ discord-signals.json
 
 # Claude Code runtime lock
 .claude/scheduled_tasks.lock
+.current_helius_key
 
 # Standalone monitor state and process lock
 wallet-monitor-state.json

@@ -1,3 +1,4 @@
+import "./envcrypt.js";
 import fs from "fs";
 import { REPO_ROOT, repoPath } from "./repo-root.js";
 import { getScreeningDefaultsForTimeframe, normalizeTimeframe, scaleScreeningToTimeframe, TIMEFRAME_SCREENING_SCALES } from "./screening-scales.js";
@@ -32,8 +33,37 @@ const strategyDefaultBinsBelow = Math.max(
   Math.min(strategyMaxBinsBelow, Math.round(configuredDefaultBinsBelow)),
 );
 
+function parseCommaList(...values) {
+  const result = [];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    for (const item of value.split(",")) {
+      const trimmed = item.trim();
+      if (trimmed && !result.includes(trimmed)) result.push(trimmed);
+    }
+  }
+  return result;
+}
+
+const heliusApiKeys = parseCommaList(
+  process.env.HELIUS_API_KEY,
+  process.env.HELIUS_API_KEYS,
+  u.heliusApiKey,
+  Array.isArray(u.heliusApiKeys) ? u.heliusApiKeys.join(",") : null
+);
+
+const isPublicFallback = url => typeof url === "string" && (url.includes("api.mainnet-beta.solana.com") || url.includes("pump.helius-rpc.com"));
+
+const heliusRpcUrls = heliusApiKeys.map(k => `https://mainnet.helius-rpc.com/?api-key=${k}`);
+const explicitRpcUrls = parseCommaList(process.env.RPC_URL, u.rpcUrl);
+const privateExplicit = explicitRpcUrls.filter(u => !isPublicFallback(u));
+const publicExplicit = explicitRpcUrls.filter(isPublicFallback);
+
+// Dedicated/private RPC first, then Helius API key pool, then public fallbacks last
+const allRpcUrls = [...new Set([...privateExplicit, ...heliusRpcUrls, ...publicExplicit])];
+
 // Apply wallet/RPC from user-config if not already in env
-if (u.rpcUrl)    process.env.RPC_URL            ||= u.rpcUrl;
+if (allRpcUrls[0]) process.env.RPC_URL ||= allRpcUrls[0];
 if (u.walletKey) process.env.WALLET_PRIVATE_KEY ||= u.walletKey;
 if (u.llmModel)  process.env.LLM_MODEL          ||= u.llmModel;
 if (u.llmBaseUrl) process.env.LLM_BASE_URL      ||= u.llmBaseUrl;
@@ -64,6 +94,10 @@ function nonEmptyString(...values) {
 }
 
 export const config = {
+  rpc: {
+    rpcUrls: allRpcUrls,
+    activeRpcUrl: allRpcUrls[0] || null,
+  },
   // Standalone is the default. Shadow mode never submits transactions.
   standalone: {
     enabled: u.standaloneEnabled !== false,

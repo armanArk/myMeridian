@@ -32,12 +32,11 @@ async function loadDlmmSdk() {
   return _DLMM;
 }
 
+import { getConnection as getRpcConnection } from "../standalone/rpc.js";
+
 let _pnlConnection = null;
 export function getPnlConnection() {
-  if (!_pnlConnection) {
-    _pnlConnection = new Connection(config.pnl.rpcUrl, "confirmed");
-  }
-  return _pnlConnection;
+  return getRpcConnection();
 }
 
 function safeNum(value) {
