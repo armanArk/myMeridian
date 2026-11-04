@@ -18,6 +18,7 @@ gmgn-config.json
 
 # Runtime state (position tracking, lessons — user-specific)
 state.json
+paper-positions.json
 lessons.json
 smart-wallets.json
 pool-memory.json
@@ -51,5 +52,7 @@ discord-signals.json
 
 # Standalone monitor state and process lock
 wallet-monitor-state.json
-wallet-monitor-state.json.tmp
+paper-positions.json
+wallet-monitor-state.json
+paper-positions.json.tmp
 standalone.lock

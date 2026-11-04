@@ -57,6 +57,20 @@ function getJupiterReferralParams() {
 /** Standard RPC balances; native SOL and wrapped SOL remain separate. */
 export async function getWalletBalances(options = {}) {
   try {
+    const { isPaperMode, getPaperBankroll } = await import("./paper.js");
+    if (isPaperMode()) {
+      const bankroll = getPaperBankroll();
+      return {
+        wallet: "paper_virtual_wallet",
+        sol: bankroll.available_sol,
+        sol_price: 180,
+        sol_usd: Math.round(bankroll.available_sol * 180 * 100) / 100,
+        usdc: 0,
+        tokens: [],
+        total_usd: Math.round(bankroll.available_sol * 180 * 100) / 100,
+        is_paper: true,
+      };
+    }
     const walletAddress = config.standalone.walletAddress || getWallet().publicKey.toString();
     const raw = await rpcBalances(walletAddress, options);
     return options.nativeOnly ? raw : await priceBalances(raw);

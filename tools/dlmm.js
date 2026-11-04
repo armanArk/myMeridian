@@ -30,6 +30,7 @@ import { appendDecision } from "../decision-log.js";
 import { agentMeridianJson, getAgentIdForRequests, getAgentMeridianHeaders } from "./agent-meridian.js";
 import { getAndClearStagedSignals } from "../signal-tracker.js";
 import { computePositions, fetchDlmmPnlForPool } from "./pnl.js";
+import { isPaperMode, isPaperPosition, deployPaperPosition, getPaperPositions, closePaperPosition } from "./paper.js";
 
 // ─── Lazy SDK loader ───────────────────────────────────────────
 // @meteora-ag/dlmm → @coral-xyz/anchor uses CJS directory imports
@@ -579,22 +580,16 @@ export async function deployPosition({
     );
   }
 
-  if (process.env.DRY_RUN === "true") {
-    return {
-      dry_run: true,
-      would_deploy: {
-        pool_address,
-        strategy: activeStrategy,
-        bins_below: activeBinsBelow,
-        bins_above: activeBinsAbove,
-        downside_pct: downside_pct ?? null,
-        upside_pct: upside_pct ?? null,
-        amount_x: finalAmountX,
-        amount_y: finalAmountY,
-        wide_range: totalBins > 69,
-      },
-      message: "DRY RUN — no transaction sent",
-    };
+  if (isPaperMode()) {
+    return await deployPaperPosition({
+      pool_address,
+      amount_sol: finalAmountY,
+      strategy: activeStrategy,
+      bins_below: activeBinsBelow,
+      bins_above: activeBinsAbove,
+      downside_pct,
+      upside_pct,
+    });
   }
 
   const isWideRange = totalBins > 69;
@@ -1154,6 +1149,9 @@ export async function getMyPositions({ force = false, silent = false, wallet_add
   }
 
   const useLocalWallet = !walletOverride;
+  if (useLocalWallet && isPaperMode()) {
+    return await getPaperPositions({ force, silent });
+  }
   if (useLocalWallet && !force && _positionsCache && Date.now() - _positionsCacheAt < POSITIONS_CACHE_TTL) {
     return _positionsCache;
   }
@@ -1476,6 +1474,9 @@ export async function searchPools({ query, limit = 10 }) {
 // ─── Claim Fees ────────────────────────────────────────────────
 export async function claimFees({ position_address }) {
   position_address = normalizeMint(position_address);
+  if (isPaperPosition(position_address)) {
+    return { success: true, is_paper: true, message: "Virtual paper fees claimed." };
+  }
   if (process.env.DRY_RUN === "true") {
     return { dry_run: true, would_claim: position_address, message: "DRY RUN — no transaction sent" };
   }
@@ -1522,6 +1523,9 @@ export async function claimFees({ position_address }) {
 // ─── Close Position ────────────────────────────────────────────
 export async function closePosition({ position_address, reason }) {
   position_address = normalizeMint(position_address);
+  if (isPaperPosition(position_address)) {
+    return await closePaperPosition({ position_address, reason });
+  }
   if (process.env.DRY_RUN === "true") {
     return { dry_run: true, would_close: position_address, message: "DRY RUN — no transaction sent" };
   }

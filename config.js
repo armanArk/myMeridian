@@ -118,6 +118,7 @@ export const config = {
     maxPendingTransactions: u.maxPendingWalletTransactions ?? 1000,
     walletGroups: u.walletGroups ?? {},
   },
+  paperTrading: u.paperTrading !== undefined ? u.paperTrading : (process.env.PAPER_TRADING === "true" || u.dryRun !== false),
   // ─── Risk Limits ─────────────────────────
   risk: {
     maxPositions:    u.maxPositions    ?? 3,
