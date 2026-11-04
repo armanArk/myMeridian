@@ -42,8 +42,7 @@ import { REPO_ROOT, repoPath } from "./repo-root.js";
 
 const entrypointPath = process.env.pm_exec_path || process.argv[1];
 const indexPath = fileURLToPath(import.meta.url);
-const isMain = !config.standalone.enabled && (process.env.pm_id != null
-  || (entrypointPath ? path.resolve(entrypointPath) === indexPath : false));
+const isMain = !config.standalone.enabled && (entrypointPath ? path.resolve(entrypointPath) === indexPath : false);
 
 if (isMain) {
   log("startup", "DLMM LP Agent starting...");
