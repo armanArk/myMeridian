@@ -148,6 +148,7 @@ export const config = {
     blockPvpSymbols:   u.blockPvpSymbols   ?? false, // hard-filter PVP rivals before the LLM sees them
     maxBotHoldersPct:  u.maxBotHoldersPct  ?? 30,  // max bot holder addresses % (Jupiter audit)
     maxTop10Pct:       u.maxTop10Pct       ?? 30,  // max top 10 holders concentration
+    requireSolQuote:   u.requireSolQuote   !== false, // only trade pairs where quote is SOL
     minVolume30m:      u.minVolume30m      ?? 12000, // min 30m volume ($)
     minVolume24h:      u.minVolume24h      ?? 1_000_000, // min 24h volume ($)
     minVolatility:     u.minVolatility     ?? 1, // min volatility score

@@ -573,7 +573,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
       return screenReport;
     }
 
-    if (passing.length === 1) {
+    if (passing.length === 1 && config.strategy?.strategy !== "bid_ask") {
       const skipReason = getLoneCandidateSkipReason(passing[0]);
       if (skipReason) {
         const candidateName = passing[0].pool?.name || "unknown";
@@ -669,9 +669,8 @@ PRE-LOADED CANDIDATES (${passing.length} pools):
 ${candidateBlocks.join("\n\n")}
 
 STEPS:
-1. Decide if any candidate is actually worth deploying. One surviving candidate is not automatically good enough.
-2. Pick the best candidate based on narrative quality, smart wallets, and pool metrics.
-3. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
+1. MANDOR EVIL PANDA STRICT RULES: Any surviving candidate has already passed 100% strict quantitative screening (Volume 30m >= $12k / 24h >= $1M, Bin Step 100/125, Market Cap >= $250k, and Bullish Supertrend 5m). Deploy into the top candidate immediately! Do NOT skip just because it is a single candidate.
+2. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
    MANDOR EVIL PANDA STRICT RULES:
    - strategy: "bid_ask" (MUTLAK)
    - downside_pct: 90 (MUTLAK -90% range jaring ke bawah dari active bin)

@@ -154,36 +154,52 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (pool?.base_token_has_high_single_ownership === true) return "base token has high single ownership";
   if (pool?.pool_type && pool.pool_type !== "dlmm") return `pool_type ${pool.pool_type} is not dlmm`;
 
+  const quoteSymbol = quote?.symbol || pool?.quote_token_symbol;
+  const quoteAddress = quote?.address || pool?.quote_token_address;
+  const isSolQuote = quoteSymbol === "SOL" || quoteSymbol === "WSOL" || quoteAddress === "So11111111111111111111111111111111111111112" || pool?.name?.endsWith("-SOL");
+  if (s.requireSolQuote !== false && !isSolQuote) {
+    return `quote token is not SOL (${quoteSymbol || "unknown"}) — single-sided SOL requires SOL quote`;
+  }
+
   if (mcap == null || mcap < s.minMcap) return `mcap ${mcap ?? "unknown"} below minMcap ${s.minMcap}`;
-  if (mcap > s.maxMcap) return `mcap ${mcap} above maxMcap ${s.maxMcap}`;
-  if (holders == null || holders < s.minHolders) return `holders ${holders ?? "unknown"} below minHolders ${s.minHolders}`;
-  if (volume == null || volume < s.minVolume) return `volume ${volume ?? "unknown"} below minVolume ${s.minVolume}`;
+  if (s.maxMcap != null && mcap > s.maxMcap) return `mcap ${mcap} above maxMcap ${s.maxMcap}`;
+  if (s.minHolders != null && s.minHolders > 0 && (holders == null || holders < s.minHolders)) {
+    return `holders ${holders ?? "unknown"} below minHolders ${s.minHolders}`;
+  }
+  if (s.minVolume != null && s.minVolume > 0 && (volume == null || volume < s.minVolume)) {
+    return `volume ${volume ?? "unknown"} below minVolume ${s.minVolume}`;
+  }
+
   const vol30m = numeric(pool?.volume_30m ?? (s.timeframe === "30m" ? pool?.volume : null));
-  if (s.minVolume30m != null && (vol30m == null || vol30m < s.minVolume30m)) {
+  const vol24h = numeric(pool?.volume_24h ?? pool?.volume24h ?? (s.timeframe === "24h" ? pool?.volume : null));
+  const meetsVol30m = s.minVolume30m != null && vol30m != null && vol30m >= s.minVolume30m;
+  const meetsVol24h = s.minVolume24h != null && vol24h != null && vol24h >= s.minVolume24h;
+  if (s.minVolume30m != null && s.minVolume24h != null) {
+    if (!meetsVol30m && !meetsVol24h) {
+      return `neither 30m volume ($${vol30m ?? "unknown"} < $${s.minVolume30m}) nor 24h volume ($${vol24h ?? "unknown"} < $${s.minVolume24h}) met threshold`;
+    }
+  } else if (s.minVolume30m != null && !meetsVol30m) {
     return `30m volume $${vol30m ?? "unknown"} below minVolume30m $${s.minVolume30m}`;
   }
-  const vol24h = numeric(pool?.volume_24h ?? pool?.volume24h ?? pool?.volume);
-  if (s.minVolume24h != null && (vol24h == null || vol24h < s.minVolume24h)) {
-    return `24h volume $${vol24h ?? "unknown"} below minVolume24h $${s.minVolume24h}`;
-  }
-  if (tvl == null || tvl < s.minTvl) return `TVL ${tvl ?? "unknown"} below minTvl ${s.minTvl}`;
-  if (s.maxTvl != null && tvl > s.maxTvl) return `TVL ${tvl} above maxTvl ${s.maxTvl}`;
+
+  if (s.minTvl != null && s.minTvl > 0 && (tvl == null || tvl < s.minTvl)) return `TVL ${tvl ?? "unknown"} below minTvl ${s.minTvl}`;
+  if (s.maxTvl != null && s.maxTvl > 0 && tvl > s.maxTvl) return `TVL ${tvl} above maxTvl ${s.maxTvl}`;
   if (binStep == null || binStep < s.minBinStep) return `bin_step ${binStep ?? "unknown"} below minBinStep ${s.minBinStep}`;
   if (binStep > s.maxBinStep) return `bin_step ${binStep} above maxBinStep ${s.maxBinStep}`;
   if (binStep !== 100 && binStep !== 125 && s.minBinStep >= 100) {
     return `bin_step ${binStep} is not allowed (only 100 or 125 for >= 1% base fee)`;
   }
-  if (feeActiveTvlRatio == null || feeActiveTvlRatio < s.minFeeActiveTvlRatio) {
+  if (s.minFeeActiveTvlRatio != null && s.minFeeActiveTvlRatio > 0 && (feeActiveTvlRatio == null || feeActiveTvlRatio < s.minFeeActiveTvlRatio)) {
     return `fee/active-TVL ${feeActiveTvlRatio ?? "unknown"} below minFeeActiveTvlRatio ${s.minFeeActiveTvlRatio}`;
   }
   const minVol = s.minVolatility != null ? s.minVolatility : 1;
   if (volatility == null || volatility < minVol) {
     return `volatility ${volatility ?? "unknown"} below minVolatility ${minVol}`;
   }
-  if (baseOrganic == null || baseOrganic < s.minOrganic) {
+  if (s.minOrganic != null && s.minOrganic > 0 && (baseOrganic == null || baseOrganic < s.minOrganic)) {
     return `base organic ${baseOrganic ?? "unknown"} below minOrganic ${s.minOrganic}`;
   }
-  if (quoteOrganic == null || quoteOrganic < s.minQuoteOrganic) {
+  if (s.minQuoteOrganic != null && s.minQuoteOrganic > 0 && (quoteOrganic == null || quoteOrganic < s.minQuoteOrganic)) {
     return `quote organic ${quoteOrganic ?? "unknown"} below minQuoteOrganic ${s.minQuoteOrganic}`;
   }
   if (
@@ -218,12 +234,16 @@ async function fetchDiscordSignalCandidates() {
   return Array.isArray(data?.candidates) ? data.candidates : [];
 }
 
-async function fetchPoolDiscoveryPage({ page_size, filters, timeframe, category }) {
-  const url = `${POOL_DISCOVERY_BASE}/pools?` +
+async function fetchPoolDiscoveryPage({ page_size, filters, timeframe, category, sort_by = "volume:desc" }) {
+  let url = `${POOL_DISCOVERY_BASE}/pools?` +
     `page_size=${page_size}` +
-    `&filter_by=${encodeURIComponent(filters)}` +
     `&timeframe=${timeframe}` +
-    `&category=${category}`;
+    `&category=${category}` +
+    `&sort_by=${encodeURIComponent(sort_by)}`;
+
+  if (filters) {
+    url += `&filter_by=${encodeURIComponent(filters)}`;
+  }
 
   const res = await fetch(url);
 
@@ -452,17 +472,17 @@ export async function discoverPools({
     s.excludeHighSupplyConcentration ? "base_token_has_high_supply_concentration=false" : null,
     "base_token_has_high_single_ownership=false",
     "pool_type=dlmm",
-    `base_token_market_cap>=${s.minMcap}`,
-    `base_token_market_cap<=${s.maxMcap}`,
-    `base_token_holders>=${s.minHolders}`,
-    `volume>=${s.minVolume}`,
-    `tvl>=${s.minTvl}`,
-    s.maxTvl != null ? `tvl<=${s.maxTvl}` : null,
-    `dlmm_bin_step>=${s.minBinStep}`,
-    `dlmm_bin_step<=${s.maxBinStep}`,
-    `fee_active_tvl_ratio>=${s.minFeeActiveTvlRatio}`,
-    `base_token_organic_score>=${s.minOrganic}`,
-    `quote_token_organic_score>=${s.minQuoteOrganic}`,
+    s.minMcap != null && s.minMcap > 0 ? `base_token_market_cap>=${s.minMcap}` : null,
+    s.maxMcap != null && s.maxMcap > 0 ? `base_token_market_cap<=${s.maxMcap}` : null,
+    s.minHolders != null && s.minHolders > 0 ? `base_token_holders>=${s.minHolders}` : null,
+    s.minVolume != null && s.minVolume > 0 ? `volume>=${s.minVolume}` : null,
+    s.minTvl != null && s.minTvl > 0 ? `tvl>=${s.minTvl}` : null,
+    s.maxTvl != null && s.maxTvl > 0 ? `tvl<=${s.maxTvl}` : null,
+    s.minBinStep != null ? `dlmm_bin_step>=${s.minBinStep}` : null,
+    s.maxBinStep != null ? `dlmm_bin_step<=${s.maxBinStep}` : null,
+    s.minFeeActiveTvlRatio != null && s.minFeeActiveTvlRatio > 0 ? `fee_active_tvl_ratio>=${s.minFeeActiveTvlRatio}` : null,
+    s.minOrganic != null && s.minOrganic > 0 ? `base_token_organic_score>=${s.minOrganic}` : null,
+    s.minQuoteOrganic != null && s.minQuoteOrganic > 0 ? `quote_token_organic_score>=${s.minQuoteOrganic}` : null,
     s.minTokenAgeHours != null ? `base_token_created_at<=${Date.now() - s.minTokenAgeHours * 3_600_000}` : null,
     s.maxTokenAgeHours != null ? `base_token_created_at>=${Date.now() - s.maxTokenAgeHours * 3_600_000}` : null,
     Array.isArray(s.allowedLaunchpads) && s.allowedLaunchpads.length > 0
@@ -475,6 +495,7 @@ export async function discoverPools({
     filters,
     timeframe: s.timeframe,
     category: s.category,
+    sort_by: s.sortBy || "volume:desc",
   });
 
   let rawPools = Array.isArray(data.data) ? data.data : [];
@@ -778,6 +799,8 @@ function condensePool(p) {
     active_tvl: round(p.active_tvl),
     fee_window: round(p.fee),
     volume_window: round(p.volume),
+    volume_30m: round(p.volume_30m ?? p.volume),
+    volume_24h: round(p.volume_24h ?? null),
     fee_active_tvl_ratio: p.fee_active_tvl_ratio != null ? fix(p.fee_active_tvl_ratio, 4) : null,
     volatility: fix(p.volatility, 4),
     volatility_timeframe: p.volatility_timeframe || getVolatilityTimeframe(config.screening.timeframe),
