@@ -8,7 +8,7 @@ import {
   deployPaperPosition,
   getPaperPositions,
   closePaperPosition,
-  getPaperBankroll,
+  getPaperStats,
 } from "../tools/paper.js";
 
 const TEST_PAPER_STORE = repoPath("paper-positions.json");
@@ -49,9 +49,6 @@ test("Paper Virtual Trading Engine Test Suite", async (t) => {
     assert.equal(res.is_paper, true);
     assert.ok(res.position.startsWith("paper_"));
     deployedPosId = res.position;
-
-    const bankroll = getPaperBankroll();
-    assert.ok(bankroll.available_sol <= 9.5);
   });
 
   await t.test("getPaperPositions lists the open virtual position with live calculation", async () => {
@@ -79,8 +76,8 @@ test("Paper Virtual Trading Engine Test Suite", async (t) => {
     const p = listAfter.positions.find((pos) => pos.position === deployedPosId);
     assert.equal(p, undefined, "Closed position should no longer be in open list");
 
-    const bankrollAfter = getPaperBankroll();
-    assert.equal(bankrollAfter.total_trades, 1);
+    const statsAfter = getPaperStats();
+    assert.equal(statsAfter.total_trades, 1);
   });
 
   process.exit(0);

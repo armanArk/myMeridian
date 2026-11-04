@@ -22,8 +22,6 @@ const DEFAULT_JUPITER_API_KEY = "b15d42e9-e0e4-4f90-a424-ae41ceeaa382";
 function loadPaperStore() {
   if (!fs.existsSync(PAPER_STORE_FILE)) {
     return {
-      virtual_bankroll_sol: 10.0,
-      available_sol: 10.0,
       realized_pnl_sol: 0.0,
       realized_pnl_usd: 0.0,
       total_trades: 0,
@@ -38,8 +36,6 @@ function loadPaperStore() {
   } catch (err) {
     log("paper_error", `Failed to read paper-positions.json: ${err.message}`);
     return {
-      virtual_bankroll_sol: 10.0,
-      available_sol: 10.0,
       realized_pnl_sol: 0.0,
       realized_pnl_usd: 0.0,
       total_trades: 0,
@@ -284,7 +280,6 @@ export async function deployPaperPosition({
   };
 
   store.positions[positionId] = paperPos;
-  store.available_sol = Math.max(0, store.available_sol - amount_sol);
   savePaperStore(store);
 
   // Register in Meridian's state.js registry so all existing PnL/exit trackers can inspect it
@@ -347,9 +342,19 @@ export async function getPaperPositions({ force = false, silent = false } = {}) 
   const store = loadPaperStore();
   const openIds = Object.keys(store.positions).filter((id) => store.positions[id].status === "OPEN");
 
+  let realWallet = config.standalone?.walletAddress || null;
+  if (!realWallet) {
+    try {
+      const { getWallet } = await import("./wallet.js");
+      realWallet = getWallet().publicKey.toString();
+    } catch {
+      realWallet = null;
+    }
+  }
+
   if (openIds.length === 0) {
     return {
-      wallet: "paper_virtual_wallet",
+      wallet: realWallet,
       total_positions: 0,
       positions: [],
       source: "paper",
@@ -413,7 +418,7 @@ export async function getPaperPositions({ force = false, silent = false } = {}) 
   }
 
   return {
-    wallet: "paper_virtual_wallet",
+    wallet: realWallet,
     total_positions: shapedPositions.length,
     positions: shapedPositions,
     source: "paper",
@@ -456,7 +461,6 @@ export async function closePaperPosition({ position_address, reason = "agent dec
   pos.close_pnl_usd = sim.pnl_usd;
   pos.final_value_usd = sim.total_value_usd;
 
-  store.available_sol += sim.total_value_sol;
   store.realized_pnl_sol += sim.pnl_sol;
   store.realized_pnl_usd += sim.pnl_usd;
   store.total_trades += 1;
@@ -539,14 +543,13 @@ export async function closePaperPosition({ position_address, reason = "agent dec
   };
 }
 
-export function getPaperBankroll() {
+export function getPaperStats() {
   const store = loadPaperStore();
   return {
-    virtual_bankroll_sol: store.virtual_bankroll_sol,
-    available_sol: store.available_sol,
     realized_pnl_sol: store.realized_pnl_sol,
     realized_pnl_usd: store.realized_pnl_usd,
     total_trades: store.total_trades,
+    winning_trades: store.winning_trades,
     win_rate_pct: store.total_trades > 0 ? (store.winning_trades / store.total_trades) * 100 : 0,
   };
 }
