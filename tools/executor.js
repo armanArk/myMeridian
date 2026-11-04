@@ -754,6 +754,13 @@ async function runSafetyChecks(name, args) {
         };
       }
 
+      if (args.downside_pct == null && config.strategy.downsidePct != null) {
+        args.downside_pct = config.strategy.downsidePct;
+      }
+      if (args.strategy == null && config.strategy.strategy != null) {
+        args.strategy = config.strategy.strategy;
+      }
+
       const deployAmountY = Number(args.amount_y ?? args.amount_sol ?? 0);
       const deployAmountX = Number(args.amount_x ?? 0);
       if (Number.isFinite(deployAmountX) && deployAmountX > 0) {

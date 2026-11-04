@@ -217,6 +217,7 @@ export async function deployPaperPosition({
   bins_above = 0,
   downside_pct = 90,
   upside_pct = 0,
+  entry_snapshot = null,
 }) {
   const store = loadPaperStore();
   const poolDetail = await fetchPoolDetail(pool_address);
@@ -276,6 +277,8 @@ export async function deployPaperPosition({
     status: "OPEN",
     closed_at: null,
     peak_pnl_pct: 0,
+    max_drawdown_pct: 0,
+    entry_snapshot: entry_snapshot || null,
     notes: [],
   };
 
@@ -296,6 +299,7 @@ export async function deployPaperPosition({
     initial_value_usd: initialValueUsd,
     fee_tvl_ratio: poolDetail?.fee_active_tvl_ratio ?? null,
     organic_score: poolDetail?.token_x?.organic_score ?? null,
+    entry_snapshot: entry_snapshot || null,
   });
 
   log("paper", `[PAPER DEPLOY] Deployed virtual position ${positionId} into ${pairName} (${amount_sol} SOL, range: [${lowerBin}..${upperBin}])`);
@@ -308,7 +312,12 @@ export async function deployPaperPosition({
     position: positionId,
     summary: `Paper deployed ${amount_sol} SOL into ${pairName}`,
     reason: `Screening criteria passed (Virtual Paper Mode)`,
-    metrics: { amount_sol, active_bin: activeBin, range: [lowerBin, upperBin] },
+    metrics: {
+      amount_sol,
+      active_bin: activeBin,
+      range: [lowerBin, upperBin],
+      ...(entry_snapshot || {}),
+    },
   });
 
   if (telegramEnabled()) {
@@ -428,7 +437,7 @@ export async function getPaperPositions({ force = false, silent = false } = {}) 
 /**
  * Close a paper virtual position
  */
-export async function closePaperPosition({ position_address, reason = "agent decision" }) {
+export async function closePaperPosition({ position_address, reason = "agent decision", trigger = null, rsi = null }) {
   const store = loadPaperStore();
   const pos = store.positions[position_address];
   if (!pos) {
@@ -453,6 +462,11 @@ export async function closePaperPosition({ position_address, reason = "agent dec
     poolDetail,
   });
 
+  const tracked = getTrackedPosition(pos.id);
+  const peakPnlPct = tracked?.peak_pnl_pct ?? (sim.pnl_pct > 0 ? sim.pnl_pct : 0);
+  const maxDrawdownPct = tracked?.max_drawdown_pct ?? (sim.pnl_pct < 0 ? sim.pnl_pct : 0);
+  const exitTrigger = trigger || (sim.pnl_pct <= -30 ? "sl_hit" : "trailing_tp");
+
   pos.status = "CLOSED";
   pos.closed_at = new Date().toISOString();
   pos.close_reason = reason;
@@ -460,6 +474,10 @@ export async function closePaperPosition({ position_address, reason = "agent dec
   pos.close_pnl_sol = sim.pnl_sol;
   pos.close_pnl_usd = sim.pnl_usd;
   pos.final_value_usd = sim.total_value_usd;
+  pos.exit_trigger = exitTrigger;
+  pos.exit_rsi = rsi;
+  pos.peak_pnl_pct = peakPnlPct;
+  pos.max_drawdown_pct = maxDrawdownPct;
 
   store.realized_pnl_sol += sim.pnl_sol;
   store.realized_pnl_usd += sim.pnl_usd;
@@ -478,6 +496,10 @@ export async function closePaperPosition({ position_address, reason = "agent dec
     pnl_sol: Math.round(sim.pnl_sol * 10000) / 10000,
     pnl_usd: sim.pnl_usd,
     fees_usd: sim.unclaimed_fees_usd,
+    trigger: exitTrigger,
+    rsi_at_exit: rsi,
+    peak_pnl_pct: peakPnlPct,
+    max_drawdown_pct: maxDrawdownPct,
     reason,
   });
 
@@ -503,6 +525,11 @@ export async function closePaperPosition({ position_address, reason = "agent dec
       minutes_in_range: sim.in_range ? sim.age_minutes : Math.max(1, sim.age_minutes - minutesOutOfRange(pos.id)),
       minutes_held: sim.age_minutes,
       close_reason: reason,
+      trigger: exitTrigger,
+      rsi_at_exit: rsi,
+      peak_pnl_pct: peakPnlPct,
+      max_drawdown_pct: maxDrawdownPct,
+      entry_snapshot: pos.entry_snapshot || null,
       is_paper: true,
     });
   } catch (err) {
@@ -515,19 +542,29 @@ export async function closePaperPosition({ position_address, reason = "agent dec
     pool: pos.pool,
     pool_name: pos.pair,
     position: pos.id,
-    summary: `Paper closed at ${sim.pnl_pct.toFixed(2)}% (${reason})`,
+    summary: `Paper closed at ${sim.pnl_pct.toFixed(2)}% (${exitTrigger})`,
     reason,
-    metrics: { pnl_pct: sim.pnl_pct, pnl_usd: sim.pnl_usd, duration_minutes: sim.age_minutes },
+    metrics: {
+      pnl_pct: sim.pnl_pct,
+      pnl_usd: sim.pnl_usd,
+      duration_minutes: sim.age_minutes,
+      trigger: exitTrigger,
+      rsi_at_exit: rsi,
+      peak_pnl_pct: peakPnlPct,
+      max_drawdown_pct: maxDrawdownPct,
+      entry_snapshot: pos.entry_snapshot || null,
+    },
   });
 
-  log("paper", `[PAPER CLOSE] Position ${pos.id} closed | Reason: ${reason} | PnL: ${sim.pnl_pct.toFixed(2)}% ($${sim.pnl_usd}) | Age: ${sim.age_minutes}m`);
+  log("paper", `[PAPER CLOSE] Position ${pos.id} closed | Trigger: ${exitTrigger} | RSI: ${rsi ?? "n/a"} | PnL: ${sim.pnl_pct.toFixed(2)}% ($${sim.pnl_usd}) | Peak: ${peakPnlPct}% | MaxDD: ${maxDrawdownPct}% | Age: ${sim.age_minutes}m`);
 
   if (telegramEnabled()) {
     const emoji = sim.pnl_pct >= 0 ? "🎉" : "🛑";
     sendMessage(`${emoji} <b>[PAPER MODE EXIT]</b>\n` +
       `Pair: <b>${pos.pair}</b>\n` +
-      `Reason: <code>${reason}</code>\n` +
+      `Trigger: <code>${exitTrigger}</code> (RSI: ${rsi != null ? rsi.toFixed(1) : "n/a"})\n` +
       `PnL: <b>${sim.pnl_pct >= 0 ? "+" : ""}${sim.pnl_pct.toFixed(2)}%</b> ($${sim.pnl_usd.toFixed(2)})\n` +
+      `Peak: <b>+${peakPnlPct.toFixed(1)}%</b> | MaxDD: <b>${maxDrawdownPct.toFixed(1)}%</b>\n` +
       `Duration: ${sim.age_minutes} minutes`).catch(() => {});
   }
 

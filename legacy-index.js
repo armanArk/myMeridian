@@ -25,12 +25,14 @@ import {
   createLiveMessage,
 } from "./telegram.js";
 import { generateBriefing } from "./briefing.js";
-import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, confirmPeak, registerExitSignal } from "./state.js";
+import { getLastBriefingDate, setLastBriefingDate, getTrackedPosition, getTrackedPositions, setPositionInstruction, updatePnlAndCheckExits, confirmPeak, registerExitSignal, registerCandidateSnapshot } from "./state.js";
 import { getActiveStrategy } from "./strategy-library.js";
 import { recordPositionSnapshot, recallForPool, addPoolNote } from "./pool-memory.js";
 import { getDeterministicCloseRule, computeBinsBelow } from "./exit-rules.js";
 import { checkSmartWalletsOnPool } from "./smart-wallets.js";
 import { getTokenNarrative, getTokenInfo } from "./tools/token.js";
+import { getGmgnSecurity } from "./tools/gmgn.js";
+import { confirmIndicatorPreset } from "./tools/chart-indicators.js";
 import { stageSignals } from "./signal-tracker.js";
 import { getWeightsSummary } from "./signal-weights.js";
 import { bootstrapHiveMind, ensureAgentId, getHiveMindPullMode, isHiveMindEnabled, pullHiveMindLessons, pullHiveMindPresets, registerHiveMindAgent, startHiveMindBackgroundSync } from "./hivemind.js";
@@ -175,7 +177,12 @@ async function executeManagementActions(actionPositions, actionMap, { liveMessag
     if (act.action === "CLOSE") {
       const reason = act.reason || (act.rule ? `Rule ${act.rule}` : "rule close");
       await liveMessage?.toolStart("close_position");
-      const res = await executeTool("close_position", { position_address: p.position, reason }).catch(e => ({ error: e.message }));
+      const res = await executeTool("close_position", {
+        position_address: p.position,
+        reason,
+        trigger: act.trigger || null,
+        rsi: act.rsi ?? null,
+      }).catch(e => ({ error: e.message }));
       const ok = res?.success !== false && !res?.error && !res?.blocked;
       await liveMessage?.toolFinish("close_position", res, ok);
       lines.push(`${p.pair}: ${ok ? `closed (${reason})` : `close FAILED — ${res?.error || res?.reason || "unknown"}`}`);
@@ -255,9 +262,27 @@ export async function runManagementCycle({ silent = false } = {}) {
     const exitMap = new Map();
     for (const p of positionData) {
       confirmPeak(p.position, p.pnl_pct, 1);
-      const exit = updatePnlAndCheckExits(p.position, p, config.management);
+      let exit = updatePnlAndCheckExits(p.position, p, config.management);
+      if (!exit && config.indicators?.enabled && p.base_mint) {
+        try {
+          const ind = await confirmIndicatorPreset({
+            mint: p.base_mint,
+            side: "exit",
+            preset: config.indicators.exitPreset || "evil_panda_exit",
+            intervals: ["15_MINUTE"],
+          });
+          if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
+            exit = {
+              action: "INDICATOR_EXIT",
+              trigger: ind.trigger,
+              rsi: ind.rsi,
+              reason: `Evil Panda exit [${ind.trigger}]: ${ind.reason}`,
+            };
+          }
+        } catch {}
+      }
       if (exit) {
-        exitMap.set(p.position, exit.reason);
+        exitMap.set(p.position, exit);
         log("state", `Exit alert for ${p.pair}: ${exit.reason}`);
       }
     }
@@ -268,7 +293,14 @@ export async function runManagementCycle({ silent = false } = {}) {
     for (const p of positionData) {
       // Hard exit — highest priority
       if (exitMap.has(p.position)) {
-        actionMap.set(p.position, { action: "CLOSE", rule: "exit", reason: exitMap.get(p.position) });
+        const exitData = exitMap.get(p.position);
+        actionMap.set(p.position, {
+          action: "CLOSE",
+          rule: exitData.trigger || "exit",
+          reason: exitData.reason,
+          trigger: exitData.trigger || "trailing_tp",
+          rsi: exitData.rsi ?? null,
+        });
         continue;
       }
       // Instruction-set — pass to LLM, can't parse in JS
@@ -429,24 +461,27 @@ export async function runScreeningCycle({ silent = false } = {}) {
     const allCandidates = [];
     for (const pool of candidates) {
       const mint = pool.base?.mint;
-      const [smartWallets, narrative, tokenInfo] = await Promise.allSettled([
+      const [smartWallets, narrative, tokenInfo, gmgnSec] = await Promise.allSettled([
         checkSmartWalletsOnPool({ pool_address: pool.pool }),
         mint ? getTokenNarrative({ mint }) : Promise.resolve(null),
         mint ? getTokenInfo({ query: mint }) : Promise.resolve(null),
+        mint ? getGmgnSecurity(mint) : Promise.resolve(null),
       ]);
+      const sec = gmgnSec.status === "fulfilled" ? gmgnSec.value : null;
       allCandidates.push({
         pool,
         sw: smartWallets.status === "fulfilled" ? smartWallets.value : null,
         n: narrative.status === "fulfilled" ? narrative.value : null,
         ti: tokenInfo.status === "fulfilled" ? tokenInfo.value?.results?.[0] : null,
+        sec,
         mem: recallForPool(pool.pool),
       });
       await new Promise(r => setTimeout(r, 150)); // avoid 429s
     }
 
-    // Hard filters after token recon — block launchpads and excessive Jupiter bot holders
+    // Hard filters after token recon — block launchpads, excessive bot holders, and GMGN security violations (Mandor Evil Panda Rules)
     const filteredOut = [];
-    const passing = allCandidates.filter(({ pool, ti }) => {
+    const passing = allCandidates.filter(({ pool, ti, sec }) => {
       const launchpad = ti?.launchpad ?? null;
       if (launchpad && config.screening.allowedLaunchpads?.length > 0 && !config.screening.allowedLaunchpads.includes(launchpad)) {
         log("screening", `Skipping ${pool.name} — launchpad ${launchpad} not in allow-list`);
@@ -465,8 +500,61 @@ export async function runScreeningCycle({ silent = false } = {}) {
         filteredOut.push({ name: pool.name, reason: `bot holders ${botPct}% > ${maxBotHoldersPct}%` });
         return false;
       }
+
+      // Mandor EP Rule: Top 10 Holders < 30%
+      const top10 = sec?.top10_pct ?? ti?.audit?.top_holders_pct;
+      if (top10 != null && config.screening.maxTop10Pct != null && top10 >= config.screening.maxTop10Pct) {
+        log("screening", `Top10 filter: dropped ${pool.name} — top10 ${top10}% >= ${config.screening.maxTop10Pct}%`);
+        filteredOut.push({ name: pool.name, reason: `top 10 holders ${top10}% >= ${config.screening.maxTop10Pct}%` });
+        return false;
+      }
+
+      // Mandor EP Rule: Insiders < 10%
+      const insiders = sec?.insiders_pct;
+      if (insiders != null && config.screening.maxInsidersPct != null && insiders >= config.screening.maxInsidersPct) {
+        log("screening", `Insiders filter: dropped ${pool.name} — insiders ${insiders}% >= ${config.screening.maxInsidersPct}%`);
+        filteredOut.push({ name: pool.name, reason: `insiders ${insiders}% >= ${config.screening.maxInsidersPct}%` });
+        return false;
+      }
+
+      // Mandor EP Rule: Bundling < 60%
+      const bundling = sec?.bundling_pct;
+      if (bundling != null && config.screening.maxBundlingPct != null && bundling >= config.screening.maxBundlingPct) {
+        log("screening", `Bundling filter: dropped ${pool.name} — bundling ${bundling}% >= ${config.screening.maxBundlingPct}%`);
+        filteredOut.push({ name: pool.name, reason: `bundling ${bundling}% >= ${config.screening.maxBundlingPct}%` });
+        return false;
+      }
+
+      // Mandor EP Rule: Warning / Phishing < 30%
+      const warning = sec?.warning_pct;
+      if (warning != null && config.screening.maxWarningPct != null && warning >= config.screening.maxWarningPct) {
+        log("screening", `Warning filter: dropped ${pool.name} — warning ${warning}% >= ${config.screening.maxWarningPct}%`);
+        filteredOut.push({ name: pool.name, reason: `warning/phishing score ${warning}% >= ${config.screening.maxWarningPct}%` });
+        return false;
+      }
+
+      // Mandor EP Rule: Akumulasi Fee (GMGN) >= 30 SOL
+      const feesSol = sec?.total_fees_sol ?? ti?.global_fees_sol;
+      if (feesSol != null && config.screening.minTokenFeesSol != null && feesSol < config.screening.minTokenFeesSol) {
+        log("screening", `Fees filter: dropped ${pool.name} — fees ${feesSol} SOL < ${config.screening.minTokenFeesSol} SOL`);
+        filteredOut.push({ name: pool.name, reason: `total fees ${feesSol} SOL < ${config.screening.minTokenFeesSol} SOL` });
+        return false;
+      }
+
       return true;
     });
+
+    for (const { pool, ti, sec } of passing) {
+      registerCandidateSnapshot(pool.pool, {
+        volume_30m: pool.volume_30m ?? pool.volume,
+        fee_sol_gmgn: sec?.total_fees_sol ?? ti?.global_fees_sol ?? null,
+        top10_pct: sec?.top10_pct ?? ti?.audit?.top_holders_pct ?? null,
+        insiders_pct: sec?.insiders_pct ?? null,
+        bundling_pct: sec?.bundling_pct ?? null,
+        warning_pct: sec?.warning_pct ?? null,
+        supertrend_5m: "bullish_flip",
+      });
+    }
 
     if (passing.length === 0) {
       const combined = filteredOut.length > 0 ? filteredOut : earlyFilteredExamples;
@@ -522,10 +610,13 @@ export async function runScreeningCycle({ silent = false } = {}) {
     );
 
     // Build compact candidate blocks
-    const candidateBlocks = passing.map(({ pool, sw, n, ti, mem }, i) => {
+    const candidateBlocks = passing.map(({ pool, sw, n, ti, sec, mem }, i) => {
       const botPct = ti?.audit?.bot_holders_pct ?? "?";
-      const top10Pct = ti?.audit?.top_holders_pct ?? "?";
-      const feesSol = ti?.global_fees_sol ?? "?";
+      const top10Pct = sec?.top10_pct ?? ti?.audit?.top_holders_pct ?? "?";
+      const insidersPct = sec?.insiders_pct ?? "?";
+      const bundlingPct = sec?.bundling_pct ?? "?";
+      const warningPct = sec?.warning_pct ?? "?";
+      const feesSol = sec?.total_fees_sol ?? ti?.global_fees_sol ?? "?";
       const launchpad = ti?.launchpad ?? null;
       const priceChange = ti?.stats_1h?.price_change;
       const netBuyers = ti?.stats_1h?.net_buyers;
@@ -538,7 +629,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
       const block = [
         `POOL: ${pool.name} (${pool.pool})`,
         `  metrics: bin_step=${pool.bin_step}, fee_pct=${pool.fee_pct}%, fee_tvl=${pool.fee_active_tvl_ratio}, vol=$${pool.volume_window}, tvl=$${pool.tvl ?? pool.active_tvl}, volatility_${pool.volatility_timeframe || "30m"}=${pool.volatility}, mcap=$${pool.mcap}, organic=${pool.organic_score}${pool.token_age_hours != null ? `, age=${pool.token_age_hours}h` : ""}`,
-        `  audit: top10=${top10Pct}%, bots=${botPct}%, fees=${feesSol}SOL${launchpad ? `, launchpad=${launchpad}` : ""}`,
+        `  audit: top10=${top10Pct}%, insiders=${insidersPct}%, bundling=${bundlingPct}%, warning=${warningPct}%, bots=${botPct}%, fees=${feesSol}SOL${launchpad ? `, launchpad=${launchpad}` : ""}`,
         pvpLine,
         `  smart_wallets: ${sw?.in_pool?.length ?? 0} present${sw?.in_pool?.length ? ` → CONFIDENCE BOOST (${sw.in_pool.map(w => w.name).join(", ")})` : ""}`,
         activeBin != null ? `  active_bin: ${activeBin}` : null,
@@ -582,10 +673,12 @@ STEPS:
 1. Decide if any candidate is actually worth deploying. One surviving candidate is not automatically good enough.
 2. Pick the best candidate based on narrative quality, smart wallets, and pool metrics.
 3. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
-   bins_below = round(${config.strategy.minBinsBelow} + (candidate volatility/5)*(${config.strategy.maxBinsBelow - config.strategy.minBinsBelow})) clamped to [${config.strategy.minBinsBelow},${config.strategy.maxBinsBelow}].
+   MANDOR EVIL PANDA STRICT RULES:
+   - strategy: "bid_ask" (MUTLAK)
+   - downside_pct: 90 (MUTLAK -90% range jaring ke bawah dari active bin)
+   - bins_above: 0 (FIXED — single-side SOL)
+   - amount_x: 0, amount_y: deploy amount in SOL.
    pass deploy_position.volatility = the candidate volatility value.
-   For single-side SOL deploys, do not invent upside:
-   set amount_y only, keep amount_x = 0, keep bins_above = 0, and let the upper bin stay at the active bin.
 4. Report in this exact format (no tables, no extra sections):
    🚀 DEPLOYED
 
@@ -735,12 +828,43 @@ Summarize the current portfolio health, total fees earned, and performance of al
       for (const p of result.positions) {
         confirmPeak(p.position, p.pnl_pct, confirmTicks);
 
-        // Detect an exit signal this tick (rule-based exits, then deterministic close rules).
-        const exit = updatePnlAndCheckExits(p.position, p, config.management);
+        // Detect an exit signal this tick (rule-based exits, indicator exits, then deterministic close rules).
+        let exit = updatePnlAndCheckExits(p.position, p, config.management);
+        let indicatorExit = null;
+        if (!exit && config.indicators?.enabled && p.base_mint) {
+          try {
+            const ind = await confirmIndicatorPreset({
+              mint: p.base_mint,
+              side: "exit",
+              preset: config.indicators.exitPreset || "evil_panda_exit",
+              intervals: ["15_MINUTE"],
+            });
+            if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
+              indicatorExit = {
+                action: "INDICATOR_EXIT",
+                trigger: ind.trigger,
+                rsi: ind.rsi,
+                reason: `Evil Panda exit [${ind.trigger}]: ${ind.reason}`,
+              };
+            }
+          } catch {}
+        }
+        if (indicatorExit) exit = indicatorExit;
+
         const closeRule = exit ? null : getDeterministicCloseRule(p, config.management);
-        let signal = null, reason = null, rule = "exit";
-        if (exit) { signal = exit.action; reason = exit.reason; }
-        else if (closeRule) { signal = `RULE_${closeRule.rule}`; reason = closeRule.reason; rule = closeRule.rule; }
+        let signal = null, reason = null, rule = "exit", trigger = null, rsi = null;
+        if (exit) {
+          signal = exit.action;
+          reason = exit.reason;
+          trigger = exit.trigger || (exit.action === "TRAILING_TP" ? "trailing_tp" : (exit.action === "STOP_LOSS" ? "sl_hit" : "exit"));
+          rsi = exit.rsi ?? null;
+          rule = trigger;
+        } else if (closeRule) {
+          signal = `RULE_${closeRule.rule}`;
+          reason = closeRule.reason;
+          rule = closeRule.rule;
+          trigger = closeRule.rule === 1 ? "sl_hit" : "rule_close";
+        }
 
         // Require N consecutive confirming ticks before acting.
         const { fire } = registerExitSignal(p.position, signal, confirmTicks);
@@ -750,7 +874,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
         // Hold the management lock so the cron cycle can't double-act on this position.
         _managementBusy = true;
         try {
-          const actMap = new Map([[p.position, { action: "CLOSE", rule, reason }]]);
+          const actMap = new Map([[p.position, { action: "CLOSE", rule, reason, trigger, rsi }]]);
           const rpt = await executeManagementActions([p], actMap, {});
           log("state", `[PnL poll] ${p.pair}: ${rpt || "closed"}`);
         } catch (e) {

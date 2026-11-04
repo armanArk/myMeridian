@@ -111,3 +111,77 @@ export async function getGmgnTokenFees(mint) {
     return null;
   }
 }
+
+/**
+ * Fetch comprehensive security metrics for a token mint.
+ * Sources from GMGN OpenAPI (if key provided) + RugCheck public API.
+ */
+export async function getGmgnSecurity(mint) {
+  if (!mint) return null;
+
+  let top10_pct = null;
+  let insiders_pct = null;
+  let bundling_pct = null;
+  let warning_pct = null;
+  let total_fees_sol = null;
+
+  // 1. Try GMGN OpenAPI if key is configured
+  if (hasGmgnApiKey()) {
+    try {
+      const payload = await gmgnFetch("/v1/token/security", { params: { chain: "sol", address: mint } });
+      const sec = payload?.data?.data || payload?.data || payload;
+      if (sec && typeof sec === "object") {
+        insiders_pct = num(sec.insider_percent ?? sec.insider_rate);
+        bundling_pct = num(sec.bundling_percent ?? sec.bundle_rate);
+        top10_pct = num(sec.top10_percent ?? sec.top10_holder_rate);
+        warning_pct = num(sec.warning_percent ?? sec.risk_score);
+      }
+    } catch (err) {
+      log("gmgn_warn", `GMGN security fetch failed for ${mint.slice(0, 8)}: ${err.message}`);
+    }
+
+    try {
+      const fees = await getGmgnTokenFees(mint);
+      if (fees?.total_fee != null) total_fees_sol = fees.total_fee;
+    } catch {}
+  }
+
+  // 2. Fetch from RugCheck public API to complement or fallback
+  try {
+    const rcRes = await fetch(`https://api.rugcheck.xyz/v1/tokens/${mint}/report`);
+    if (rcRes.ok) {
+      const rc = await rcRes.json();
+      if (top10_pct == null && Array.isArray(rc.topHolders)) {
+        const top10Sum = rc.topHolders.slice(0, 10).reduce((sum, h) => sum + (num(h.pct) || 0), 0);
+        top10_pct = Math.round(top10Sum * 100) / 100;
+      }
+      if (insiders_pct == null) {
+        if (Array.isArray(rc.insiderNetworks) && rc.insiderNetworks.length > 0) {
+          // If total supply known, compute percentage, or use number of detected accounts
+          const insiderHolding = rc.insiderNetworks.reduce((sum, n) => sum + (num(n.currentHolding) || 0), 0);
+          const totalSupply = num(rc.token?.supply) || 1;
+          insiders_pct = Math.min(100, Math.round(((insiderHolding / totalSupply) * 100) * 100) / 100);
+        } else {
+          insiders_pct = rc.graphInsidersDetected ? Math.min(100, Number(rc.graphInsidersDetected)) : 0;
+        }
+      }
+      if (warning_pct == null) {
+        warning_pct = num(rc.score_normalised) ?? (rc.score ? Math.min(100, Math.round(rc.score / 10)) : 0);
+      }
+      if (bundling_pct == null && rc.risks) {
+        const bundleRisk = rc.risks.find((r) => /bundle|sniper/i.test(r.name || ""));
+        if (bundleRisk) bundling_pct = 70; // flag high bundling if detected by rugcheck
+      }
+    }
+  } catch (err) {
+    log("gmgn_warn", `Rugcheck fallback fetch failed for ${mint.slice(0, 8)}: ${err.message}`);
+  }
+
+  return {
+    top10_pct,
+    insiders_pct,
+    bundling_pct,
+    warning_pct,
+    total_fees_sol,
+  };
+}

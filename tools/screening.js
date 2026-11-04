@@ -158,15 +158,27 @@ function getRawPoolScreeningRejectReason(pool, s) {
   if (mcap > s.maxMcap) return `mcap ${mcap} above maxMcap ${s.maxMcap}`;
   if (holders == null || holders < s.minHolders) return `holders ${holders ?? "unknown"} below minHolders ${s.minHolders}`;
   if (volume == null || volume < s.minVolume) return `volume ${volume ?? "unknown"} below minVolume ${s.minVolume}`;
+  const vol30m = numeric(pool?.volume_30m ?? (s.timeframe === "30m" ? pool?.volume : null));
+  if (s.minVolume30m != null && (vol30m == null || vol30m < s.minVolume30m)) {
+    return `30m volume $${vol30m ?? "unknown"} below minVolume30m $${s.minVolume30m}`;
+  }
+  const vol24h = numeric(pool?.volume_24h ?? pool?.volume24h ?? pool?.volume);
+  if (s.minVolume24h != null && (vol24h == null || vol24h < s.minVolume24h)) {
+    return `24h volume $${vol24h ?? "unknown"} below minVolume24h $${s.minVolume24h}`;
+  }
   if (tvl == null || tvl < s.minTvl) return `TVL ${tvl ?? "unknown"} below minTvl ${s.minTvl}`;
   if (s.maxTvl != null && tvl > s.maxTvl) return `TVL ${tvl} above maxTvl ${s.maxTvl}`;
   if (binStep == null || binStep < s.minBinStep) return `bin_step ${binStep ?? "unknown"} below minBinStep ${s.minBinStep}`;
   if (binStep > s.maxBinStep) return `bin_step ${binStep} above maxBinStep ${s.maxBinStep}`;
+  if (binStep !== 100 && binStep !== 125 && s.minBinStep >= 100) {
+    return `bin_step ${binStep} is not allowed (only 100 or 125 for >= 1% base fee)`;
+  }
   if (feeActiveTvlRatio == null || feeActiveTvlRatio < s.minFeeActiveTvlRatio) {
     return `fee/active-TVL ${feeActiveTvlRatio ?? "unknown"} below minFeeActiveTvlRatio ${s.minFeeActiveTvlRatio}`;
   }
-  if (!isUsableVolatility(volatility)) {
-    return `volatility ${volatility ?? "unknown"} is unusable`;
+  const minVol = s.minVolatility != null ? s.minVolatility : 1;
+  if (volatility == null || volatility < minVol) {
+    return `volatility ${volatility ?? "unknown"} below minVolatility ${minVol}`;
   }
   if (baseOrganic == null || baseOrganic < s.minOrganic) {
     return `base organic ${baseOrganic ?? "unknown"} below minOrganic ${s.minOrganic}`;

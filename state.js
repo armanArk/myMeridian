@@ -73,6 +73,7 @@ export function trackPosition({
   entry_tvl = null,
   entry_volume = null,
   entry_holders = null,
+  entry_snapshot = null,
 }) {
   const state = load();
   state.positions[position] = {
@@ -94,6 +95,7 @@ export function trackPosition({
     entry_tvl,
     entry_volume,
     entry_holders,
+    entry_snapshot: entry_snapshot || null,
     signal_snapshot: signal_snapshot || null,
     deployed_at: new Date().toISOString(),
     out_of_range_since: null,
@@ -104,6 +106,7 @@ export function trackPosition({
     closed_at: null,
     notes: [],
     peak_pnl_pct: 0,
+    max_drawdown_pct: 0,
     pending_peak_pnl_pct: null,
     pending_peak_confirm_count: 0,
     pending_peak_started_at: null,
@@ -364,6 +367,18 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
 
   let changed = false;
 
+  // Track max drawdown and peak PnL during active position life
+  if (currentPnlPct != null && !pnl_pct_suspicious) {
+    if (pos.peak_pnl_pct == null || currentPnlPct > pos.peak_pnl_pct) {
+      pos.peak_pnl_pct = currentPnlPct;
+      changed = true;
+    }
+    if (pos.max_drawdown_pct == null || currentPnlPct < pos.max_drawdown_pct) {
+      pos.max_drawdown_pct = currentPnlPct;
+      changed = true;
+    }
+  }
+
   // Activate trailing TP once trigger threshold is reached
   if (mgmtConfig.trailingTakeProfit && !pos.trailing_active && (pos.peak_pnl_pct ?? 0) >= mgmtConfig.trailingTriggerPct) {
     pos.trailing_active = true;
@@ -388,6 +403,7 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
   if (!pnl_pct_suspicious && currentPnlPct != null && mgmtConfig.stopLossPct != null && currentPnlPct <= mgmtConfig.stopLossPct) {
     return {
       action: "STOP_LOSS",
+      trigger: "sl_hit",
       reason: `Stop loss: PnL ${currentPnlPct.toFixed(2)}% <= ${mgmtConfig.stopLossPct}%`,
     };
   }
@@ -398,6 +414,7 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     if (dropFromPeak >= mgmtConfig.trailingDropPct) {
       return {
         action: "TRAILING_TP",
+        trigger: "trailing_tp",
         reason: `Trailing TP: peak ${pos.peak_pnl_pct.toFixed(2)}% → current ${currentPnlPct.toFixed(2)}% (dropped ${dropFromPeak.toFixed(2)}% >= ${mgmtConfig.trailingDropPct}%)`,
         needs_confirmation: true,
         peak_pnl_pct: pos.peak_pnl_pct,
@@ -486,3 +503,17 @@ export function syncOpenPositions(active_addresses) {
 
   if (changed) save(state);
 }
+
+// ─── Ephemeral Candidate Snapshots for Entry Logging ────────────
+const candidateSnapshots = new Map();
+
+export function registerCandidateSnapshot(poolAddress, snapshot) {
+  if (!poolAddress || !snapshot) return;
+  candidateSnapshots.set(String(poolAddress).toLowerCase(), snapshot);
+}
+
+export function getCandidateSnapshot(poolAddress) {
+  if (!poolAddress) return null;
+  return candidateSnapshots.get(String(poolAddress).toLowerCase()) || null;
+}
+

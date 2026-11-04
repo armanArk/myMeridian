@@ -22,6 +22,7 @@ import {
   getTrackedPosition,
   minutesOutOfRange,
   syncOpenPositions,
+  getCandidateSnapshot,
 } from "../state.js";
 import { recordPerformance } from "../lessons.js";
 import { isBaseMintOnCooldown, isPoolOnCooldown } from "../pool-memory.js";
@@ -472,12 +473,14 @@ export async function deployPosition({
   entry_tvl,
   entry_volume,
   entry_holders,
+  entry_snapshot,
   before_submit,
   on_prepared,
 }) {
   pool_address = normalizeMint(pool_address);
   if (config.standalone.enabled && typeof before_submit !== "function") throw new Error("Standalone deploy requires a wallet signal");
   const activeStrategy = strategy || config.strategy.strategy;
+  const effectiveDownsidePct = downside_pct ?? config.strategy.downsidePct ?? 90;
   let activeBinsBelow = bins_below ?? config.strategy.defaultBinsBelow ?? config.strategy.minBinsBelow;
   let activeBinsAbove = bins_above ?? 0;
   const parsedVolatility = volatility == null ? null : Number(volatility);
@@ -504,8 +507,8 @@ export async function deployPosition({
   const actualBinStep = pool.lbPair.binStep;
   const activePrice = Number(getPriceOfBinByBinId(activeBin.binId, actualBinStep).toString());
 
-  if (downside_pct != null || upside_pct != null) {
-    const downsidePct = Math.max(0, Number(downside_pct ?? 0));
+  if (effectiveDownsidePct != null || upside_pct != null) {
+    const downsidePct = Math.max(0, Number(effectiveDownsidePct ?? 0));
     const upsidePct = Math.max(0, Number(upside_pct ?? 0));
 
     if (!Number.isFinite(downsidePct) || !Number.isFinite(upsidePct)) {
@@ -587,8 +590,9 @@ export async function deployPosition({
       strategy: activeStrategy,
       bins_below: activeBinsBelow,
       bins_above: activeBinsAbove,
-      downside_pct,
+      downside_pct: effectiveDownsidePct,
       upside_pct,
+      entry_snapshot: entry_snapshot || getCandidateSnapshot(pool_address),
     });
   }
 
@@ -710,6 +714,7 @@ export async function deployPosition({
           entry_tvl,
           entry_volume,
           entry_holders,
+          entry_snapshot: entry_snapshot || getCandidateSnapshot(pool_address),
         });
       }
 
@@ -856,6 +861,7 @@ export async function deployPosition({
       entry_tvl,
       entry_volume,
       entry_holders,
+      entry_snapshot: entry_snapshot || getCandidateSnapshot(pool_address),
     });
 
     appendDecision({
@@ -1521,10 +1527,10 @@ export async function claimFees({ position_address }) {
 }
 
 // ─── Close Position ────────────────────────────────────────────
-export async function closePosition({ position_address, reason }) {
+export async function closePosition({ position_address, reason, trigger = null, rsi = null }) {
   position_address = normalizeMint(position_address);
   if (isPaperPosition(position_address)) {
-    return await closePaperPosition({ position_address, reason });
+    return await closePaperPosition({ position_address, reason, trigger, rsi });
   }
   if (process.env.DRY_RUN === "true") {
     return { dry_run: true, would_close: position_address, message: "DRY RUN — no transaction sent" };
@@ -1697,6 +1703,7 @@ export async function closePosition({ position_address, reason }) {
           }
         } catch { /* non-blocking */ }
 
+        const exitTrigger = trigger || (tracked?.peak_pnl_pct && pnlPct <= -30 ? "sl_hit" : "trailing_tp");
         await recordPerformance({
           position: position_address,
           pool: poolAddress,
@@ -1715,6 +1722,11 @@ export async function closePosition({ position_address, reason }) {
           minutes_in_range: minutesHeld - minutesOOR,
           minutes_held: minutesHeld,
           close_reason: reason || "agent decision",
+          trigger: exitTrigger,
+          rsi_at_exit: rsi ?? null,
+          peak_pnl_pct: tracked?.peak_pnl_pct ?? null,
+          max_drawdown_pct: tracked?.max_drawdown_pct ?? null,
+          entry_snapshot: tracked?.entry_snapshot ?? null,
           signal_snapshot: signalSnapshot,
           entry_mcap: tracked.entry_mcap ?? null,
           entry_tvl: tracked.entry_tvl ?? null,
@@ -1729,7 +1741,7 @@ export async function closePosition({ position_address, reason }) {
           pool: poolAddress,
           pool_name: tracked.pool_name || poolMeta.name || poolAddress.slice(0, 8),
           position: position_address,
-          summary: `Relay closed at ${pnlPct.toFixed(2)}%`,
+          summary: `Relay closed at ${pnlPct.toFixed(2)}% (${exitTrigger})`,
           reason: reason || "agent decision",
           risks: [
             minutesOOR > 0 ? `out of range ${minutesOOR}m` : null,
@@ -1740,6 +1752,11 @@ export async function closePosition({ position_address, reason }) {
             pnl_pct: pnlPct,
             fees_usd: feesUsd,
             minutes_held: minutesHeld,
+            trigger: exitTrigger,
+            rsi_at_exit: rsi ?? null,
+            peak_pnl_pct: tracked?.peak_pnl_pct ?? null,
+            max_drawdown_pct: tracked?.max_drawdown_pct ?? null,
+            entry_snapshot: tracked?.entry_snapshot ?? null,
           },
         });
 
@@ -2002,6 +2019,7 @@ export async function closePosition({ position_address, reason }) {
         }
       } catch { /* non-blocking */ }
 
+      const exitTrigger = trigger || (tracked?.peak_pnl_pct && pnlPct <= -30 ? "sl_hit" : "trailing_tp");
       await recordPerformance({
         position: position_address,
         pool: poolAddress,
@@ -2020,6 +2038,11 @@ export async function closePosition({ position_address, reason }) {
         minutes_in_range: minutesHeld - minutesOOR,
         minutes_held: minutesHeld,
         close_reason: reason || "agent decision",
+        trigger: exitTrigger,
+        rsi_at_exit: rsi ?? null,
+        peak_pnl_pct: tracked?.peak_pnl_pct ?? null,
+        max_drawdown_pct: tracked?.max_drawdown_pct ?? null,
+        entry_snapshot: tracked?.entry_snapshot ?? null,
         signal_snapshot: signalSnapshot,
         entry_mcap: tracked.entry_mcap ?? null,
         entry_tvl: tracked.entry_tvl ?? null,
@@ -2034,7 +2057,7 @@ export async function closePosition({ position_address, reason }) {
         pool: poolAddress,
         pool_name: tracked.pool_name || poolMeta.name || poolAddress.slice(0, 8),
         position: position_address,
-        summary: `Closed at ${pnlPct.toFixed(2)}%`,
+        summary: `Closed at ${pnlPct.toFixed(2)}% (${exitTrigger})`,
         reason: reason || "agent decision",
         risks: [
           minutesOOR > 0 ? `out of range ${minutesOOR}m` : null,
@@ -2045,6 +2068,11 @@ export async function closePosition({ position_address, reason }) {
           pnl_pct: pnlPct,
           fees_usd: feesUsd,
           minutes_held: minutesHeld,
+          trigger: exitTrigger,
+          rsi_at_exit: rsi ?? null,
+          peak_pnl_pct: tracked?.peak_pnl_pct ?? null,
+          max_drawdown_pct: tracked?.max_drawdown_pct ?? null,
+          entry_snapshot: tracked?.entry_snapshot ?? null,
         },
       });
 

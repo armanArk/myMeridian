@@ -147,7 +147,13 @@ export const config = {
     avoidPvpSymbols:   u.avoidPvpSymbols   ?? true, // avoid exact-symbol rivals with real active pools
     blockPvpSymbols:   u.blockPvpSymbols   ?? false, // hard-filter PVP rivals before the LLM sees them
     maxBotHoldersPct:  u.maxBotHoldersPct  ?? 30,  // max bot holder addresses % (Jupiter audit)
-    maxTop10Pct:       u.maxTop10Pct       ?? 60,  // max top 10 holders concentration
+    maxTop10Pct:       u.maxTop10Pct       ?? 30,  // max top 10 holders concentration
+    minVolume30m:      u.minVolume30m      ?? 12000, // min 30m volume ($)
+    minVolume24h:      u.minVolume24h      ?? 1_000_000, // min 24h volume ($)
+    minVolatility:     u.minVolatility     ?? 1, // min volatility score
+    maxInsidersPct:    u.maxInsidersPct    ?? 10, // max insider holders %
+    maxBundlingPct:    u.maxBundlingPct    ?? 60, // max bundled sniper supply %
+    maxWarningPct:     u.maxWarningPct     ?? 30, // max security warning score %
     loneCandidateMinDegen: u.loneCandidateMinDegen ?? 50, // degen score that lets a SOLO candidate deploy without a narrative
     allowedLaunchpads: u.allowedLaunchpads ?? [],  // allow-list launchpads, [] = no allow-list
     blockedLaunchpads:  u.blockedLaunchpads  ?? [],  // e.g. ["letsbonk.fun", "pump.fun"]
@@ -191,6 +197,7 @@ export const config = {
   // ─── Strategy Mapping ───────────────────
   strategy: {
     strategy:     u.strategy     ?? "bid_ask",
+    downsidePct:  u.downsidePct  ?? 90,
     minBinsBelow: strategyMinBinsBelow,
     maxBinsBelow: strategyMaxBinsBelow,
     defaultBinsBelow: strategyDefaultBinsBelow,
@@ -379,6 +386,13 @@ export function reloadScreeningThresholds() {
     if (fresh.avoidPvpSymbols   !== undefined) s.avoidPvpSymbols = fresh.avoidPvpSymbols;
     if (fresh.blockPvpSymbols   !== undefined) s.blockPvpSymbols = fresh.blockPvpSymbols;
     if (fresh.maxBotHoldersPct  != null) s.maxBotHoldersPct = fresh.maxBotHoldersPct;
+    if (fresh.minVolume30m     != null) s.minVolume30m = fresh.minVolume30m;
+    if (fresh.minVolume24h     != null) s.minVolume24h = fresh.minVolume24h;
+    if (fresh.minVolatility    != null) s.minVolatility = fresh.minVolatility;
+    if (fresh.maxInsidersPct   != null) s.maxInsidersPct = fresh.maxInsidersPct;
+    if (fresh.maxBundlingPct   != null) s.maxBundlingPct = fresh.maxBundlingPct;
+    if (fresh.maxWarningPct    != null) s.maxWarningPct = fresh.maxWarningPct;
+    if (fresh.downsidePct      != null) config.strategy.downsidePct = fresh.downsidePct;
     if (fresh.allowedLaunchpads !== undefined) s.allowedLaunchpads = fresh.allowedLaunchpads;
     if (fresh.blockedLaunchpads !== undefined) s.blockedLaunchpads = fresh.blockedLaunchpads;
     const minBinsBelow = numericConfig(fresh.minBinsBelow) ?? config.strategy.minBinsBelow;

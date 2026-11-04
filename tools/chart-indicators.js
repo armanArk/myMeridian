@@ -193,6 +193,39 @@ function evaluatePreset(side, preset, payload) {
             reason: "Price rejected below a key Fibonacci level",
             signal: summary,
           };
+    case "evil_panda_exit": {
+      const rsiVal = summary.rsi;
+      const closePrice = summary.close;
+      const upperBandVal = summary.upperBand;
+      const isRsiOver90 = rsiVal != null && rsiVal >= 90;
+      const isAtUpperBB = closePrice != null && upperBandVal != null && closePrice >= upperBandVal;
+
+      if (isAtUpperBB && isRsiOver90) {
+        return {
+          confirmed: true,
+          trigger: "bypass_bb_rsi",
+          reason: `Upper BB touched/exceeded (${closePrice} >= ${upperBandVal}) with RSI(2) extreme (${rsiVal} >= 90)`,
+          rsi: rsiVal,
+          signal: summary,
+        };
+      }
+      if (isRsiOver90) {
+        return {
+          confirmed: true,
+          trigger: "bypass_rsi",
+          reason: `RSI(2) extreme overbought (${rsiVal} >= 90)`,
+          rsi: rsiVal,
+          signal: summary,
+        };
+      }
+      return {
+        confirmed: false,
+        trigger: null,
+        reason: `Evil Panda exit not met (RSI(2): ${rsiVal ?? "n/a"}, Upper BB: ${upperBandVal ?? "n/a"}, Close: ${closePrice ?? "n/a"})`,
+        rsi: rsiVal,
+        signal: summary,
+      };
+    }
     default:
       return {
         confirmed: false,
@@ -228,7 +261,7 @@ export async function confirmIndicatorPreset({
   mint,
   side,
   preset = side === "entry" ? config.indicators.entryPreset : config.indicators.exitPreset,
-  intervals = config.indicators.intervals,
+  intervals = side === "entry" ? ["5_MINUTE"] : ["15_MINUTE"],
   refresh = false,
 } = {}) {
   if (!config.indicators.enabled || !mint || !preset) {
@@ -249,6 +282,8 @@ export async function confirmIndicatorPreset({
         interval,
         ok: true,
         confirmed: !!evaluation.confirmed,
+        trigger: evaluation.trigger || null,
+        rsi: evaluation.rsi ?? evaluation.signal?.rsi ?? null,
         reason: evaluation.reason,
         signal: evaluation.signal,
         latest: payload?.latest || null,
@@ -274,6 +309,8 @@ export async function confirmIndicatorPreset({
       skipped: true,
       preset,
       side,
+      trigger: null,
+      rsi: null,
       reason: "Indicator API unavailable; falling back to existing logic",
       intervals: results,
     };
@@ -284,12 +321,16 @@ export async function confirmIndicatorPreset({
     ? successful.every((entry) => entry.confirmed)
     : successful.some((entry) => entry.confirmed);
 
+  const matched = successful.find((entry) => entry.confirmed) || successful[0];
+
   return {
     enabled: true,
     confirmed,
     skipped: false,
     preset,
     side,
+    trigger: matched?.trigger || null,
+    rsi: matched?.rsi ?? null,
     requireAllIntervals: requireAll,
     reason: confirmed
       ? `${preset} confirmed on ${successful.filter((entry) => entry.confirmed).map((entry) => entry.interval).join(", ")}`
