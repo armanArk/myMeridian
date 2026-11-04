@@ -1978,11 +1978,23 @@ Focus on: hold duration, entry/exit timing, what win rates look like, whether sc
 }
 
 export function startLegacy() {
+  log("startup", "DLMM LP Agent starting in Legacy mode...");
+  log("startup", `Repo: ${REPO_ROOT} | cwd: ${process.cwd()}${process.env.pm_id ? ` | PM2 id: ${process.env.pm_id}` : ""}`);
+  log("startup", `Mode: ${process.env.DRY_RUN === "true" ? "DRY RUN" : "LIVE"}`);
+  log("startup", `Model: ${config.llm.screeningModel || process.env.LLM_MODEL || "hermes-3-405b"}`);
   ensureAgentId();
   bootstrapHiveMind().catch(e => log("hivemind_warn", e.message));
   startHiveMindBackgroundSync();
   startCronJobs();
+  maybeRunMissedBriefing().catch(() => { });
   startPolling(telegramHandler);
+  (async () => {
+    try {
+      await runScreeningCycle({ silent: false });
+    } catch (e) {
+      log("startup_error", e.message);
+    }
+  })();
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 }

@@ -11,6 +11,18 @@ export async function runManagementCycle(options) {
   if (config.standalone.enabled) return (await import("./standalone/runtime.js")).manageOnce();
   return (await import("./legacy-index.js")).runManagementCycle(options);
 }
+export async function startCronJobs() {
+  if (config.standalone.enabled) {
+    const { startStandalone } = await import("./standalone/runtime.js");
+    return startStandalone();
+  }
+  const { startLegacy } = await import("./legacy-index.js");
+  return startLegacy();
+}
+export async function startLegacy() {
+  const { startLegacy: runStartLegacy } = await import("./legacy-index.js");
+  return runStartLegacy();
+}
 const entry = process.env.pm_exec_path || process.argv[1];
 if (entry && pathToFileURL(path.resolve(entry)).href === import.meta.url) {
   if (config.standalone.enabled) {
