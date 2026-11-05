@@ -168,8 +168,8 @@ function computeSimulatedPositionState({ pos, currentActiveBin, currentPrice, so
 
   let estimatedFeesSol = 0;
   if (poolDetail) {
-    const vol24h = Number(poolDetail.volume ?? poolDetail.volume_24h ?? 0);
-    const feeRatePct = Number(poolDetail.base_fee_percentage ?? (binStep / 100));
+    const vol24h = Number(poolDetail.volume ?? poolDetail.volume_24h ?? poolDetail.avg_volume ?? 0);
+    const feeRatePct = Number(poolDetail.fee_pct ?? poolDetail.base_fee_percentage ?? (binStep / 100));
     const activeTvlUsd = Number(poolDetail.active_tvl ?? poolDetail.tvl ?? 20000);
     const solPrice = solUsd > 0 ? solUsd : 180;
     const activeTvlSol = Math.max(50, activeTvlUsd / solPrice);
@@ -371,9 +371,22 @@ export async function getPaperPositions({ force = false, silent = false } = {}) 
   }
 
   const baseMints = openIds.map((id) => store.positions[id].base_mint).filter(Boolean);
-  const [prices, poolDetails] = await Promise.all([
+  const poolAddresses = openIds.map((id) => store.positions[id].pool);
+
+  let getActiveBin = null;
+  try {
+    const dlmmMod = await import("./dlmm.js");
+    getActiveBin = dlmmMod.getActiveBin;
+  } catch {
+    getActiveBin = null;
+  }
+
+  const [prices, poolDetails, activeBins] = await Promise.all([
     fetchJupiterPrices([SOL_MINT, ...baseMints]),
-    Promise.all(openIds.map((id) => fetchPoolDetail(store.positions[id].pool))),
+    Promise.all(poolAddresses.map((pool) => fetchPoolDetail(pool))),
+    getActiveBin
+      ? Promise.all(poolAddresses.map((pool) => getActiveBin({ pool_address: pool }).catch(() => null)))
+      : Promise.resolve([]),
   ]);
 
   const solUsd = prices[SOL_MINT] || 180;
@@ -382,9 +395,14 @@ export async function getPaperPositions({ force = false, silent = false } = {}) 
   for (let i = 0; i < openIds.length; i++) {
     const pos = store.positions[openIds[i]];
     const poolDetail = poolDetails[i];
-    const currentPrice = (pos.base_mint && prices[pos.base_mint]) || Number(poolDetail?.price || pos.entry_price);
+    const ab = activeBins ? activeBins[i] : null;
 
-    let activeBin = poolDetail?.active_bin != null ? Number(poolDetail.active_bin) : null;
+    const dlmmPrice = ab?.price != null ? Number(ab.price) : null;
+    const jupPrice = pos.base_mint ? prices[pos.base_mint] : null;
+    const poolPrice = poolDetail?.pool_price != null ? Number(poolDetail.pool_price) : (poolDetail?.price != null ? Number(poolDetail.price) : null);
+    const currentPrice = dlmmPrice || jupPrice || poolPrice || Number(pos.entry_price || 0);
+
+    let activeBin = ab?.binId != null ? Number(ab.binId) : (poolDetail?.active_bin != null ? Number(poolDetail.active_bin) : null);
     if (activeBin == null) {
       activeBin = pos.active_bin_at_deploy;
     }
@@ -449,10 +467,25 @@ export async function closePaperPosition({ position_address, reason = "agent dec
 
   // Get current live valuation for final performance accounting
   const poolDetail = await fetchPoolDetail(pos.pool);
-  const prices = await fetchJupiterPrices([SOL_MINT, pos.base_mint]);
+  let getActiveBin = null;
+  try {
+    const dlmmMod = await import("./dlmm.js");
+    getActiveBin = dlmmMod.getActiveBin;
+  } catch {
+    getActiveBin = null;
+  }
+
+  const [prices, ab] = await Promise.all([
+    fetchJupiterPrices([SOL_MINT, pos.base_mint]),
+    getActiveBin ? getActiveBin({ pool_address: pos.pool }).catch(() => null) : Promise.resolve(null),
+  ]);
+
   const solUsd = prices[SOL_MINT] || 180;
-  const currentPrice = (pos.base_mint && prices[pos.base_mint]) || Number(poolDetail?.price || pos.entry_price);
-  const activeBin = poolDetail?.active_bin != null ? Number(poolDetail.active_bin) : pos.active_bin_at_deploy;
+  const dlmmPrice = ab?.price != null ? Number(ab.price) : null;
+  const jupPrice = pos.base_mint ? prices[pos.base_mint] : null;
+  const poolPrice = poolDetail?.pool_price != null ? Number(poolDetail.pool_price) : (poolDetail?.price != null ? Number(poolDetail.price) : null);
+  const currentPrice = dlmmPrice || jupPrice || poolPrice || Number(pos.entry_price || 0);
+  const activeBin = ab?.binId != null ? Number(ab.binId) : (poolDetail?.active_bin != null ? Number(poolDetail.active_bin) : pos.active_bin_at_deploy);
 
   const sim = computeSimulatedPositionState({
     pos,

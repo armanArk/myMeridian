@@ -1068,14 +1068,28 @@ function describeLatestCandidates(limit = 5) {
 function formatWalletStatus(wallet, positions) {
   const deployAmount = computeDeployAmount(wallet.sol);
   const hive = isHiveMindEnabled() ? "on" : "off";
-  return [
+  const lines = [
     `Wallet: ${wallet.sol} SOL ($${wallet.sol_usd})`,
     `SOL price: $${wallet.sol_price}`,
     `Open positions: ${positions.total_positions}/${config.risk.maxPositions}`,
     `Next deploy amount: ${deployAmount} SOL`,
     `Dry run: ${process.env.DRY_RUN === "true" ? "yes" : "no"}`,
     `HiveMind: ${hive}`,
-  ].join("\n");
+  ];
+  if (positions.positions && positions.positions.length > 0) {
+    lines.push("");
+    lines.push("Positions:");
+    const cur = config.management.solMode ? "◎" : "$";
+    for (const p of positions.positions) {
+      const pnlPct = p.pnl_pct != null ? `${p.pnl_pct >= 0 ? "+" : ""}${p.pnl_pct}%` : "";
+      const pnlVal = p.pnl_usd != null ? `${p.pnl_usd >= 0 ? "+" : "-"}${cur}${Math.abs(p.pnl_usd)}` : "";
+      const pnlStr = pnlPct ? `${pnlPct} (${pnlVal})` : pnlVal;
+      const age = p.age_minutes != null ? `${p.age_minutes}m` : "?";
+      const oor = !p.in_range ? " ⚠️OOR" : "";
+      lines.push(`• ${p.pair}: PnL ${pnlStr} | ${age}${oor}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 function formatConfigSnapshot() {
@@ -1535,10 +1549,12 @@ async function telegramHandler(msg) {
       if (total_positions === 0) { await sendMessage("No open positions."); return; }
       const cur = config.management.solMode ? "◎" : "$";
       const lines = positions.map((p, i) => {
-        const pnl = p.pnl_usd >= 0 ? `+${cur}${p.pnl_usd}` : `-${cur}${Math.abs(p.pnl_usd)}`;
+        const pnlPct = p.pnl_pct != null ? `${p.pnl_pct >= 0 ? "+" : ""}${p.pnl_pct}%` : "";
+        const pnlVal = p.pnl_usd != null ? `${p.pnl_usd >= 0 ? "+" : "-"}${cur}${Math.abs(p.pnl_usd)}` : "";
+        const pnlStr = pnlPct ? `${pnlVal} (${pnlPct})` : pnlVal;
         const age = p.age_minutes != null ? `${p.age_minutes}m` : "?";
         const oor = !p.in_range ? " ⚠️OOR" : "";
-        return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnl} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`;
+        return `${i + 1}. ${p.pair} | ${cur}${p.total_value_usd} | PnL: ${pnlStr} | fees: ${cur}${p.unclaimed_fees_usd} | ${age}${oor}`;
       });
       await sendMessage(`📊 Open Positions (${total_positions}):\n\n${lines.join("\n")}\n\n/close <n> to close | /set <n> <note> to set instruction`);
     } catch (e) { await sendMessage(`Error: ${e.message}`).catch(() => {}); }
