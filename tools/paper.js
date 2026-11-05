@@ -136,14 +136,16 @@ function computeSimulatedPositionState({ pos, currentActiveBin, currentPrice, so
       sumTokenX += weight / binPriceRatio;
     }
     const tokenXPerSol = sumTokenX / sumWeight;
-    const currentPriceRatio = currentPrice > 0 && entryPrice > 0 ? (currentPrice / entryPrice) : Math.pow(1 + binStep / 10000, currentActiveBin - entryActiveBin);
+    // DLMM bin pricing is strictly geometric: (1 + step/10000)^(currentActiveBin - entryActiveBin)
+    const currentPriceRatio = Math.pow(1 + binStep / 10000, currentActiveBin - entryActiveBin);
     principalSol = amountSol * tokenXPerSol * currentPriceRatio;
   } else {
     // Inside the range: partial absorption
     let sumWeight = 0;
     let unconvertedSolWeight = 0;
     let convertedTokenXValueWeight = 0;
-    const currentPriceRatio = currentPrice > 0 && entryPrice > 0 ? (currentPrice / entryPrice) : Math.pow(1 + binStep / 10000, currentActiveBin - entryActiveBin);
+    // DLMM bin pricing is strictly geometric: (1 + step/10000)^(currentActiveBin - entryActiveBin)
+    const currentPriceRatio = Math.pow(1 + binStep / 10000, currentActiveBin - entryActiveBin);
 
     for (let b = lowerBin; b <= upperBin; b++) {
       const weight = strategy === "bid_ask" ? (b - lowerBin + 1) : 1;
@@ -397,10 +399,10 @@ export async function getPaperPositions({ force = false, silent = false } = {}) 
     const poolDetail = poolDetails[i];
     const ab = activeBins ? activeBins[i] : null;
 
-    const dlmmPrice = ab?.price != null ? Number(ab.price) : null;
     const jupPrice = pos.base_mint ? prices[pos.base_mint] : null;
-    const poolPrice = poolDetail?.pool_price != null ? Number(poolDetail.pool_price) : (poolDetail?.price != null ? Number(poolDetail.price) : null);
-    const currentPrice = dlmmPrice || jupPrice || poolPrice || Number(pos.entry_price || 0);
+    const poolUsdPrice = poolDetail?.token_x?.price != null ? Number(poolDetail.token_x.price) : (poolDetail?.pool_price != null ? Number(poolDetail.pool_price) * solUsd : null);
+    const dlmmUsdPrice = ab?.price != null ? Number(ab.price) * solUsd : null;
+    const currentPrice = jupPrice || poolUsdPrice || dlmmUsdPrice || Number(pos.entry_price || 0);
 
     let activeBin = ab?.binId != null ? Number(ab.binId) : (poolDetail?.active_bin != null ? Number(poolDetail.active_bin) : null);
     if (activeBin == null) {
@@ -481,10 +483,10 @@ export async function closePaperPosition({ position_address, reason = "agent dec
   ]);
 
   const solUsd = prices[SOL_MINT] || 180;
-  const dlmmPrice = ab?.price != null ? Number(ab.price) : null;
   const jupPrice = pos.base_mint ? prices[pos.base_mint] : null;
-  const poolPrice = poolDetail?.pool_price != null ? Number(poolDetail.pool_price) : (poolDetail?.price != null ? Number(poolDetail.price) : null);
-  const currentPrice = dlmmPrice || jupPrice || poolPrice || Number(pos.entry_price || 0);
+  const poolUsdPrice = poolDetail?.token_x?.price != null ? Number(poolDetail.token_x.price) : (poolDetail?.pool_price != null ? Number(poolDetail.pool_price) * solUsd : null);
+  const dlmmUsdPrice = ab?.price != null ? Number(ab.price) * solUsd : null;
+  const currentPrice = jupPrice || poolUsdPrice || dlmmUsdPrice || Number(pos.entry_price || 0);
   const activeBin = ab?.binId != null ? Number(ab.binId) : (poolDetail?.active_bin != null ? Number(poolDetail.active_bin) : pos.active_bin_at_deploy);
 
   const sim = computeSimulatedPositionState({
