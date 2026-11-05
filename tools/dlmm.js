@@ -1527,10 +1527,10 @@ export async function claimFees({ position_address }) {
 }
 
 // ─── Close Position ────────────────────────────────────────────
-export async function closePosition({ position_address, reason, trigger = null, rsi = null }) {
+export async function closePosition({ position_address, reason, trigger = null, rsi = null, exit_indicators = null }) {
   position_address = normalizeMint(position_address);
   if (isPaperPosition(position_address)) {
-    return await closePaperPosition({ position_address, reason, trigger, rsi });
+    return await closePaperPosition({ position_address, reason, trigger, rsi, exit_indicators });
   }
   if (process.env.DRY_RUN === "true") {
     return { dry_run: true, would_close: position_address, message: "DRY RUN — no transaction sent" };
@@ -1703,7 +1703,8 @@ export async function closePosition({ position_address, reason, trigger = null, 
           }
         } catch { /* non-blocking */ }
 
-        const exitTrigger = trigger || (tracked?.peak_pnl_pct && pnlPct <= -30 ? "sl_hit" : "trailing_tp");
+        const exitTrigger = trigger || (tracked?.peak_pnl_pct && pnlPct <= -30 ? "stop_loss_hit" : "trailing_take_profit");
+        const exitIndicators = exit_indicators || (rsi != null ? { rsi_2: rsi } : null);
         await recordPerformance({
           position: position_address,
           pool: poolAddress,
@@ -1723,7 +1724,9 @@ export async function closePosition({ position_address, reason, trigger = null, 
           minutes_held: minutesHeld,
           close_reason: reason || "agent decision",
           trigger: exitTrigger,
+          exit_trigger_type: exitTrigger,
           rsi_at_exit: rsi ?? null,
+          exit_indicators: exitIndicators,
           peak_pnl_pct: tracked?.peak_pnl_pct ?? null,
           max_drawdown_pct: tracked?.max_drawdown_pct ?? null,
           entry_snapshot: tracked?.entry_snapshot ?? null,
@@ -2019,7 +2022,8 @@ export async function closePosition({ position_address, reason, trigger = null, 
         }
       } catch { /* non-blocking */ }
 
-      const exitTrigger = trigger || (tracked?.peak_pnl_pct && pnlPct <= -30 ? "sl_hit" : "trailing_tp");
+      const exitTrigger = trigger || (tracked?.peak_pnl_pct && pnlPct <= -30 ? "stop_loss_hit" : "trailing_take_profit");
+      const exitIndicators = exit_indicators || (rsi != null ? { rsi_2: rsi } : null);
       await recordPerformance({
         position: position_address,
         pool: poolAddress,
@@ -2039,7 +2043,9 @@ export async function closePosition({ position_address, reason, trigger = null, 
         minutes_held: minutesHeld,
         close_reason: reason || "agent decision",
         trigger: exitTrigger,
+        exit_trigger_type: exitTrigger,
         rsi_at_exit: rsi ?? null,
+        exit_indicators: exitIndicators,
         peak_pnl_pct: tracked?.peak_pnl_pct ?? null,
         max_drawdown_pct: tracked?.max_drawdown_pct ?? null,
         entry_snapshot: tracked?.entry_snapshot ?? null,

@@ -181,6 +181,7 @@ async function executeManagementActions(actionPositions, actionMap, { liveMessag
         reason,
         trigger: act.trigger || null,
         rsi: act.rsi ?? null,
+        exit_indicators: act.exit_indicators || (act.rsi != null ? { rsi_2: act.rsi } : null),
       }).catch(e => ({ error: e.message }));
       const ok = res?.success !== false && !res?.error && !res?.blocked;
       await liveMessage?.toolFinish("close_position", res, ok);
@@ -548,6 +549,26 @@ export async function runScreeningCycle({ silent = false } = {}) {
 
     for (const { pool, ti, sec } of passing) {
       registerCandidateSnapshot(pool.pool, {
+        entry_volatility_score: pool.volatility ?? 1,
+        entry_volume_30m: pool.volume_30m ?? pool.volume ?? 0,
+        entry_gmgn_fee_sol: sec?.total_fees_sol ?? ti?.global_fees_sol ?? null,
+        entry_gmgn_safety: {
+          top10_pct: sec?.top10_pct ?? ti?.audit?.top_holders_pct ?? null,
+          insiders_pct: sec?.insiders_pct ?? null,
+          bundling_pct: sec?.bundling_pct ?? null,
+          warning_pct: sec?.warning_pct ?? null,
+        },
+        entry_indicators: {
+          supertrend_5m: "bullish_flip",
+          supertrend_direction: "up",
+          supertrend_break_up: true,
+        },
+        range_setup: {
+          downside_pct: 90,
+          strategy: "bid_ask",
+          bin_step: pool.bin_step ?? pool.dlmm_params?.bin_step ?? null,
+        },
+        // Flat aliases for backwards compatibility:
         volume_30m: pool.volume_30m ?? pool.volume,
         fee_sol_gmgn: sec?.total_fees_sol ?? ti?.global_fees_sol ?? null,
         top10_pct: sec?.top10_pct ?? ti?.audit?.top_holders_pct ?? null,
@@ -845,8 +866,9 @@ Summarize the current portfolio health, total fees earned, and performance of al
               if (hasProfit) {
                 indicatorExit = {
                   action: "INDICATOR_EXIT",
-                  trigger: ind.trigger,
+                  trigger: ind.trigger === "rsi_extreme" ? "bypass_rsi90" : (ind.trigger || "indicator_exit"),
                   rsi: ind.rsi,
+                  exit_indicators: { rsi_2: ind.rsi, trigger: ind.trigger },
                   reason: `Evil Panda exit [${ind.trigger}]: ${ind.reason} (PnL: +${p.pnl_pct?.toFixed(2) ?? 0}%)`,
                 };
               }
@@ -856,18 +878,19 @@ Summarize the current portfolio health, total fees earned, and performance of al
         if (indicatorExit) exit = indicatorExit;
 
         const closeRule = exit ? null : getDeterministicCloseRule(p, config.management);
-        let signal = null, reason = null, rule = "exit", trigger = null, rsi = null;
+        let signal = null, reason = null, rule = "exit", trigger = null, rsi = null, exit_indicators = null;
         if (exit) {
           signal = exit.action;
           reason = exit.reason;
-          trigger = exit.trigger || (exit.action === "TRAILING_TP" ? "trailing_tp" : (exit.action === "STOP_LOSS" ? "sl_hit" : (exit.action === "OUT_OF_RANGE" ? "oor_timeout" : (exit.action === "LOW_YIELD" ? "low_yield" : "exit"))));
+          trigger = exit.trigger || (exit.action === "TRAILING_TP" ? "trailing_take_profit" : (exit.action === "STOP_LOSS" ? "stop_loss_hit" : (exit.action === "OUT_OF_RANGE" ? "out_of_range" : (exit.action === "LOW_YIELD" ? "low_yield" : "exit"))));
           rsi = exit.rsi ?? null;
+          exit_indicators = exit.exit_indicators || (rsi != null ? { rsi_2: rsi } : null);
           rule = trigger;
         } else if (closeRule) {
           signal = `RULE_${closeRule.rule}`;
           reason = closeRule.reason;
           rule = closeRule.rule;
-          trigger = closeRule.rule === 1 ? "sl_hit" : "rule_close";
+          trigger = closeRule.rule === 1 ? "stop_loss_hit" : (closeRule.rule === 2 ? "take_profit" : (closeRule.rule === 3 || closeRule.rule === 4 ? "out_of_range" : "rule_close"));
         }
 
         // Require N consecutive confirming ticks before acting.
@@ -878,7 +901,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
         // Hold the management lock so the cron cycle can't double-act on this position.
         _managementBusy = true;
         try {
-          const actMap = new Map([[p.position, { action: "CLOSE", rule, reason, trigger, rsi }]]);
+          const actMap = new Map([[p.position, { action: "CLOSE", rule, reason, trigger, rsi, exit_indicators }]]);
           const rpt = await executeManagementActions([p], actMap, {});
           log("state", `[PnL poll] ${p.pair}: ${rpt || "closed"}`);
         } catch (e) {

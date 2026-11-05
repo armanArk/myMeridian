@@ -263,6 +263,22 @@ export function confirmPeak(position_address, candidatePnlPct, confirmTicks = 2)
 }
 
 /**
+ * Explicitly update the max drawdown for a position.
+ */
+export function updateDrawdown(position_address, currentPnlPct) {
+  if (currentPnlPct == null || !Number.isFinite(currentPnlPct)) return false;
+  const state = load();
+  const pos = state.positions[position_address];
+  if (!pos || pos.closed) return false;
+  if (pos.max_drawdown_pct == null || currentPnlPct < pos.max_drawdown_pct) {
+    pos.max_drawdown_pct = currentPnlPct;
+    save(state);
+    return true;
+  }
+  return false;
+}
+
+/**
  * Consecutive-tick confirmation for an exit signal. The fast poller calls this every
  * tick with the exit action string detected this poll (or null when no exit). An exit
  * only fires after `confirmTicks` consecutive polls report the SAME action — so a single
