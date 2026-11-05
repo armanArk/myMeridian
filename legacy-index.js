@@ -860,7 +860,7 @@ Summarize the current portfolio health, total fees earned, and performance of al
         if (exit) {
           signal = exit.action;
           reason = exit.reason;
-          trigger = exit.trigger || (exit.action === "TRAILING_TP" ? "trailing_tp" : (exit.action === "STOP_LOSS" ? "sl_hit" : "exit"));
+          trigger = exit.trigger || (exit.action === "TRAILING_TP" ? "trailing_tp" : (exit.action === "STOP_LOSS" ? "sl_hit" : (exit.action === "OUT_OF_RANGE" ? "oor_timeout" : (exit.action === "LOW_YIELD" ? "low_yield" : "exit"))));
           rsi = exit.rsi ?? null;
           rule = trigger;
         } else if (closeRule) {

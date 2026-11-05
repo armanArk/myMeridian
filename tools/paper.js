@@ -598,6 +598,7 @@ export async function closePaperPosition({ position_address, reason = "agent dec
     sendMessage(`${emoji} <b>[PAPER MODE EXIT]</b>\n` +
       `Pair: <b>${pos.pair}</b>\n` +
       `Trigger: <code>${exitTrigger}</code> (RSI: ${rsi != null ? rsi.toFixed(1) : "n/a"})\n` +
+      (reason ? `Reason: <code>${reason}</code>\n` : "") +
       `PnL: <b>${sim.pnl_pct >= 0 ? "+" : ""}${sim.pnl_pct.toFixed(2)}%</b> ($${sim.pnl_usd.toFixed(2)})\n` +
       `Peak: <b>+${peakPnlPct.toFixed(1)}%</b> | MaxDD: <b>${maxDrawdownPct.toFixed(1)}%</b>\n` +
       `Duration: ${sim.age_minutes} minutes`).catch(() => {});
