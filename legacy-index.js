@@ -271,12 +271,15 @@ export async function runManagementCycle({ silent = false } = {}) {
             intervals: ["15_MINUTE"],
           });
           if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
-            exit = {
-              action: "INDICATOR_EXIT",
-              trigger: ind.trigger,
-              rsi: ind.rsi,
-              reason: `Evil Panda exit [${ind.trigger}]: ${ind.reason}`,
-            };
+            const hasProfit = (p.pnl_pct != null && p.pnl_pct > 0) || (p.pnl_usd != null && p.pnl_usd > 0);
+            if (hasProfit) {
+              exit = {
+                action: "INDICATOR_EXIT",
+                trigger: ind.trigger,
+                rsi: ind.rsi,
+                reason: `Evil Panda exit [${ind.trigger}]: ${ind.reason} (PnL: +${p.pnl_pct?.toFixed(2) ?? 0}%)`,
+              };
+            }
           }
         } catch {}
       }
@@ -838,12 +841,15 @@ Summarize the current portfolio health, total fees earned, and performance of al
               intervals: ["15_MINUTE"],
             });
             if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
-              indicatorExit = {
-                action: "INDICATOR_EXIT",
-                trigger: ind.trigger,
-                rsi: ind.rsi,
-                reason: `Evil Panda exit [${ind.trigger}]: ${ind.reason}`,
-              };
+              const hasProfit = (p.pnl_pct != null && p.pnl_pct > 0) || (p.pnl_usd != null && p.pnl_usd > 0);
+              if (hasProfit) {
+                indicatorExit = {
+                  action: "INDICATOR_EXIT",
+                  trigger: ind.trigger,
+                  rsi: ind.rsi,
+                  reason: `Evil Panda exit [${ind.trigger}]: ${ind.reason} (PnL: +${p.pnl_pct?.toFixed(2) ?? 0}%)`,
+                };
+              }
             }
           } catch {}
         }

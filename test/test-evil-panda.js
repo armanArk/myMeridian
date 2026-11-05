@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { config } from "../config.js";
 import { updatePnlAndCheckExits, trackPosition } from "../state.js";
 import { getDeterministicCloseRule } from "../exit-rules.js";
-import { confirmIndicatorPreset } from "../tools/chart-indicators.js";
+import { confirmIndicatorPreset, evaluatePreset } from "../tools/chart-indicators.js";
 
 test("Evil Panda Strategy Rules Verification", async (t) => {
   await t.test("Exit Rules - Stop Loss at -30%", () => {
@@ -68,6 +68,37 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
     const mockExitPreset = config.indicators.exitPreset;
     assert.equal(mockExitPreset, "evil_panda_exit");
     assert.equal(config.indicators.rsiLength, 2);
+
+    // Test supertrend_break requires fresh breakout (supertrendBreakUp === true)
+    const freshBreakPayload = {
+      latest: {
+        states: { supertrendBreakUp: true, supertrendDirection: "bullish" },
+        indicators: { close: 0.05, rsi: 50 },
+      },
+    };
+    const freshRes = evaluatePreset("entry", "supertrend_break", freshBreakPayload);
+    assert.equal(freshRes.confirmed, true, "Fresh break must be confirmed");
+
+    const oldTrendPayload = {
+      latest: {
+        states: { supertrendBreakUp: false, supertrendDirection: "bullish" },
+        indicators: { close: 0.05, supertrend: 0.04, rsi: 50 },
+      },
+    };
+    const oldRes = evaluatePreset("entry", "supertrend_break", oldTrendPayload);
+    assert.equal(oldRes.confirmed, false, "Already green without fresh break must NOT be confirmed");
+
+    // Test evil_panda_exit bypass triggers at RSI >= 90
+    const overboughtPayload = {
+      latest: {
+        candle: { close: 0.05 },
+        rsi: { value: 94.5 },
+        supertrend: { direction: "bullish" },
+      },
+    };
+    const exitRes = evaluatePreset("exit", "evil_panda_exit", overboughtPayload);
+    assert.equal(exitRes.confirmed, true);
+    assert.equal(exitRes.trigger, "bypass_rsi");
   });
 
   await t.test("Configured Screening Thresholds Match Mandor EP Rules", () => {

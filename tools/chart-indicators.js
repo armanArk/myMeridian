@@ -42,7 +42,7 @@ function buildSignalSummary(payload) {
   };
 }
 
-function evaluatePreset(side, preset, payload) {
+export function evaluatePreset(side, preset, payload) {
   const summary = buildSignalSummary(payload);
   const oversold = Number(config.indicators.rsiOversold ?? 30);
   const overbought = Number(config.indicators.rsiOverbought ?? 80);
@@ -70,8 +70,8 @@ function evaluatePreset(side, preset, payload) {
     case "supertrend_break":
       return side === "entry"
         ? {
-            confirmed: summary.supertrendBreakUp || (isBullish && close != null && summary.supertrendValue != null && close >= summary.supertrendValue),
-            reason: summary.supertrendBreakUp ? "Supertrend flipped bullish" : "Price is above bullish Supertrend",
+            confirmed: Boolean(summary.supertrendBreakUp),
+            reason: summary.supertrendBreakUp ? "Supertrend flipped bullish (fresh break)" : "Supertrend has not freshly flipped bullish",
             signal: summary,
           }
         : {
@@ -317,9 +317,30 @@ export async function confirmIndicatorPreset({
   }
 
   const requireAll = !!config.indicators.requireAllIntervals;
-  const confirmed = requireAll
+  let confirmed = requireAll
     ? successful.every((entry) => entry.confirmed)
     : successful.some((entry) => entry.confirmed);
+
+  // Gate Check: If entry confirmed, verify 15m is NOT already in exit territory (e.g. RSI >= 90)
+  if (confirmed && side === "entry" && config.indicators.exitPreset === "evil_panda_exit") {
+    try {
+      const exitPayload = await fetchChartIndicatorsForMint(mint, { interval: "15_MINUTE", refresh });
+      const exitEval = evaluatePreset("exit", "evil_panda_exit", exitPayload);
+      if (exitEval?.confirmed) {
+        return {
+          enabled: true,
+          confirmed: false,
+          skipped: false,
+          preset,
+          side,
+          trigger: null,
+          rsi: exitEval.rsi ?? null,
+          reason: `Rejected entry: 15_MINUTE already meets exit condition (${exitEval.reason})`,
+          intervals: results,
+        };
+      }
+    } catch (_) {}
+  }
 
   const matched = successful.find((entry) => entry.confirmed) || successful[0];
 
