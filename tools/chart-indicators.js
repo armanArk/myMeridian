@@ -284,6 +284,8 @@ export async function confirmIndicatorPreset({
         confirmed: !!evaluation.confirmed,
         trigger: evaluation.trigger || null,
         rsi: evaluation.rsi ?? evaluation.signal?.rsi ?? null,
+        bb_upper: evaluation.signal?.upperBand ?? null,
+        supertrend_value: evaluation.signal?.supertrendValue ?? null,
         reason: evaluation.reason,
         signal: evaluation.signal,
         latest: payload?.latest || null,
@@ -352,6 +354,9 @@ export async function confirmIndicatorPreset({
     side,
     trigger: matched?.trigger || null,
     rsi: matched?.rsi ?? null,
+    bb_upper: matched?.bb_upper ?? matched?.signal?.upperBand ?? null,
+    supertrend_value: matched?.supertrend_value ?? matched?.signal?.supertrendValue ?? null,
+    signal: matched?.signal || null,
     requireAllIntervals: requireAll,
     reason: confirmed
       ? `${preset} confirmed on ${successful.filter((entry) => entry.confirmed).map((entry) => entry.interval).join(", ")}`

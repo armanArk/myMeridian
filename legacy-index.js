@@ -548,6 +548,8 @@ export async function runScreeningCycle({ silent = false } = {}) {
     });
 
     for (const { pool, ti, sec } of passing) {
+      const conf = pool.indicator_confirmation;
+      const supertrendVal = conf?.supertrend_value ?? conf?.signal?.supertrendValue ?? null;
       registerCandidateSnapshot(pool.pool, {
         entry_volatility_score: pool.volatility ?? 1,
         entry_volume_30m: pool.volume_30m ?? pool.volume ?? 0,
@@ -561,6 +563,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
         entry_indicators: {
           supertrend_5m: "bullish_flip",
           supertrend_direction: "up",
+          supertrend_value: supertrendVal,
           supertrend_break_up: true,
         },
         range_setup: {
@@ -569,6 +572,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
           bin_step: pool.bin_step ?? pool.dlmm_params?.bin_step ?? null,
         },
         // Flat aliases for backwards compatibility:
+        supertrend_value: supertrendVal,
         volume_30m: pool.volume_30m ?? pool.volume,
         fee_sol_gmgn: sec?.total_fees_sol ?? ti?.global_fees_sol ?? null,
         top10_pct: sec?.top10_pct ?? ti?.audit?.top_holders_pct ?? null,
@@ -864,12 +868,19 @@ Summarize the current portfolio health, total fees earned, and performance of al
             if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
               const hasProfit = (p.pnl_pct != null && p.pnl_pct > 0) || (p.pnl_usd != null && p.pnl_usd > 0);
               if (hasProfit) {
+                const triggerType = ind.trigger === "bypass_bb_rsi"
+                  ? "bypass_bb_plus_rsi90"
+                  : (ind.trigger === "bypass_rsi" || ind.trigger === "rsi_extreme" ? "bypass_rsi90" : (ind.trigger || "indicator_exit"));
                 indicatorExit = {
                   action: "INDICATOR_EXIT",
-                  trigger: ind.trigger === "rsi_extreme" ? "bypass_rsi90" : (ind.trigger || "indicator_exit"),
+                  trigger: triggerType,
                   rsi: ind.rsi,
-                  exit_indicators: { rsi_2: ind.rsi, trigger: ind.trigger },
-                  reason: `Evil Panda exit [${ind.trigger}]: ${ind.reason} (PnL: +${p.pnl_pct?.toFixed(2) ?? 0}%)`,
+                  exit_indicators: {
+                    rsi_2: ind.rsi,
+                    bb_upper: ind.bb_upper ?? ind.signal?.upperBand ?? null,
+                    trigger: triggerType,
+                  },
+                  reason: `Evil Panda exit [${triggerType}]: ${ind.reason} (PnL: +${p.pnl_pct?.toFixed(2) ?? 0}%)`,
                 };
               }
             }
