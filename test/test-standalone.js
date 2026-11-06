@@ -263,7 +263,8 @@ console.log("\n[8] deterministic rules");
   const mgmt = { ...config.management, trailingTakeProfit: false };
   check("stop loss closes", getDeterministicCloseRule(pos({ pnl_pct: -60 }), mgmt)?.rule === 1);
   check("take profit closes", getDeterministicCloseRule(pos({ pnl_pct: 10 }), mgmt)?.rule === 2);
-  check("pumped far above range closes", getDeterministicCloseRule(pos({ active_bin: 130 }), mgmt)?.rule === 3);
+  check("pumped far above range closes for spot", getDeterministicCloseRule(pos({ active_bin: 130, strategy: "spot" }), mgmt)?.rule === 3);
+  check("pumped above range does NOT close bid_ask", getDeterministicCloseRule(pos({ active_bin: 130, strategy: "bid_ask" }), mgmt) === null);
   check("suspect PnL never closes on PnL rules", getDeterministicCloseRule(pos({ pnl_pct: -95, pnl_pct_suspicious: true }), mgmt) === null);
 
   const lo = config.strategy.minBinsBelow, hi = config.strategy.maxBinsBelow;

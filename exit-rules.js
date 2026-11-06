@@ -29,20 +29,47 @@ export function getDeterministicCloseRule(position, managementConfig) {
   if (!managementConfig.trailingTakeProfit && !pnlSuspect && position.pnl_pct != null && position.pnl_pct >= managementConfig.takeProfitPct) {
     return { action: "CLOSE", rule: 2, reason: "take profit" };
   }
+  const strategy = position.strategy || tracked?.strategy || config.strategy?.strategy || "bid_ask";
+  const isBidAsk = strategy === "bid_ask";
+
+  // Rule 3: Pumped far above range.
+  // Only applies to 2-sided Spot pairs where pumping above upper_bin leaves the pool
+  // holding 100% quote token (missing token upside).
+  // For Single-Sided SOL (bid_ask), being above upper_bin means holding 100% SOL (0 IL, 0 loss).
+  // Under Mandor's rules, we NEVER cut at +10 bins; we give it up to outOfRangeAboveWaitMinutes (24h)
+  // to wait for the natural pullback/dump into our DLMM fee net.
   if (
+    !isBidAsk &&
     position.active_bin != null &&
     position.upper_bin != null &&
     position.active_bin > position.upper_bin + managementConfig.outOfRangeBinsToClose
   ) {
     return { action: "CLOSE", rule: 3, reason: "pumped far above range" };
   }
+
+  // Rule 4: Out of Range wait timeout.
+  // Case A: Above range (active_bin > upper_bin)
   if (
     position.active_bin != null &&
     position.upper_bin != null &&
-    position.active_bin > position.upper_bin &&
+    position.active_bin > position.upper_bin
+  ) {
+    const waitLimitAbove = isBidAsk
+      ? (managementConfig.outOfRangeAboveWaitMinutes ?? 1440)
+      : managementConfig.outOfRangeWaitMinutes;
+    if ((position.minutes_out_of_range ?? 0) >= waitLimitAbove) {
+      return { action: "CLOSE", rule: 4, reason: `OOR above (${position.minutes_out_of_range ?? 0}m >= ${waitLimitAbove}m)` };
+    }
+  }
+
+  // Case B: Below range (active_bin < lower_bin) — real downside / rug risk
+  if (
+    position.active_bin != null &&
+    position.lower_bin != null &&
+    position.active_bin < position.lower_bin &&
     (position.minutes_out_of_range ?? 0) >= managementConfig.outOfRangeWaitMinutes
   ) {
-    return { action: "CLOSE", rule: 4, reason: "OOR" };
+    return { action: "CLOSE", rule: 4, reason: `OOR below (${position.minutes_out_of_range ?? 0}m >= ${managementConfig.outOfRangeWaitMinutes}m)` };
   }
   if (
     position.fee_per_tvl_24h != null &&
