@@ -65,7 +65,7 @@ function buildSignalSummary(payload) {
     middleBand: safeNum(bollinger.middle),
     upperBand: safeNum(bollinger.upper),
     supertrendValue: safeNum(supertrend.value),
-    supertrendDirection: String(supertrend.direction || "unknown"),
+    supertrendDirection: String(supertrend.direction || latest?.states?.supertrendDirection || "unknown"),
     supertrendBreakUp: !!latest?.states?.supertrendBreakUp,
     supertrendBreakDown: !!latest?.states?.supertrendBreakDown,
     fib50: safeNum(fibonacciLevels["0.500"]),
@@ -104,8 +104,15 @@ export function evaluatePreset(side, preset, payload) {
     case "supertrend_break":
       return side === "entry"
         ? {
-            confirmed: Boolean(summary.supertrendBreakUp),
-            reason: summary.supertrendBreakUp ? "Supertrend flipped bullish (fresh break)" : "Supertrend has not freshly flipped bullish",
+            confirmed: Boolean(
+              summary.supertrendBreakUp ||
+                (isBullish && close != null && summary.supertrendValue != null && close >= summary.supertrendValue)
+            ),
+            reason: summary.supertrendBreakUp
+              ? "Supertrend flipped bullish (fresh break)"
+              : isBullish && close != null && summary.supertrendValue != null && close >= summary.supertrendValue
+                ? "Price is above bullish Supertrend"
+                : "Supertrend is not bullish or price below line",
             signal: summary,
           }
         : {

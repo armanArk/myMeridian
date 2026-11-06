@@ -69,24 +69,46 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
     assert.equal(mockExitPreset, "evil_panda_exit");
     assert.equal(config.indicators.rsiLength, 2);
 
-    // Test supertrend_break requires fresh breakout (supertrendBreakUp === true)
+    // Test supertrend_break allows fresh breakout OR ongoing bullish price above Supertrend
     const freshBreakPayload = {
       latest: {
         states: { supertrendBreakUp: true, supertrendDirection: "bullish" },
-        indicators: { close: 0.05, rsi: 50 },
+        candle: { close: 0.05 },
+        supertrend: { direction: "bullish", value: 0.04 },
       },
     };
     const freshRes = evaluatePreset("entry", "supertrend_break", freshBreakPayload);
     assert.equal(freshRes.confirmed, true, "Fresh break must be confirmed");
 
-    const oldTrendPayload = {
+    const ongoingBullishPayload = {
       latest: {
         states: { supertrendBreakUp: false, supertrendDirection: "bullish" },
-        indicators: { close: 0.05, supertrend: 0.04, rsi: 50 },
+        candle: { close: 0.05 },
+        supertrend: { direction: "bullish", value: 0.04 },
       },
     };
-    const oldRes = evaluatePreset("entry", "supertrend_break", oldTrendPayload);
-    assert.equal(oldRes.confirmed, false, "Already green without fresh break must NOT be confirmed");
+    const ongoingRes = evaluatePreset("entry", "supertrend_break", ongoingBullishPayload);
+    assert.equal(ongoingRes.confirmed, true, "Ongoing bullish above Supertrend must be confirmed");
+
+    const priceBelowSupertrendPayload = {
+      latest: {
+        states: { supertrendBreakUp: false, supertrendDirection: "bullish" },
+        candle: { close: 0.035 },
+        supertrend: { direction: "bullish", value: 0.04 },
+      },
+    };
+    const belowRes = evaluatePreset("entry", "supertrend_break", priceBelowSupertrendPayload);
+    assert.equal(belowRes.confirmed, false, "Bullish but price below line must NOT be confirmed");
+
+    const bearishPayload = {
+      latest: {
+        states: { supertrendBreakUp: false, supertrendDirection: "bearish" },
+        candle: { close: 0.05 },
+        supertrend: { direction: "bearish", value: 0.06 },
+      },
+    };
+    const bearishRes = evaluatePreset("entry", "supertrend_break", bearishPayload);
+    assert.equal(bearishRes.confirmed, false, "Bearish Supertrend must NOT be confirmed");
 
     // Test evil_panda_exit bypass triggers at RSI >= 90
     const overboughtPayload = {
