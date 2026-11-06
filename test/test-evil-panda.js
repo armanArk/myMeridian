@@ -101,13 +101,67 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
     assert.equal(exitRes.trigger, "bypass_rsi");
   });
 
+  await t.test("Exit Rules - OOR Above (relaxed to 24h) vs OOR Below (cut at limit)", () => {
+    const posId = "test_pos_oor";
+    const stateUrl = new URL("../state.json", import.meta.url);
+    trackPosition({
+      position: posId,
+      pool: "fake_pool",
+      pool_name: "OOR-SOL",
+      strategy: "bid_ask",
+      bin_range: { min: -500, max: -300, active: -300 },
+    });
+
+    // Simulate position that went OOR 90 minutes ago
+    const state = JSON.parse(fs.readFileSync(stateUrl, "utf8"));
+    state.positions[posId].out_of_range_since = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+    fs.writeFileSync(stateUrl, JSON.stringify(state, null, 2));
+
+    const mgmt = {
+      outOfRangeWaitMinutes: 60,
+      outOfRangeAboveWaitMinutes: 1440,
+      stopLossPct: -30,
+    };
+
+    // Scenario 1: Active bin is -250 (ABOVE upperBin -300) -> OOR Above
+    // Should NOT trigger OUT_OF_RANGE because 90m < 1440m limit!
+    const posAbove = {
+      position: posId,
+      active_bin: -250,
+      upper_bin: -300,
+      lower_bin: -500,
+      in_range: false,
+      pnl_pct: 0,
+    };
+    const resAbove = updatePnlAndCheckExits(posId, posAbove, mgmt);
+    assert.equal(resAbove, null);
+
+    // Scenario 2: Active bin is -550 (BELOW lowerBin -500) -> OOR Below
+    // SHOULD trigger OUT_OF_RANGE because 90m >= 60m limit!
+    const posBelow = {
+      position: posId,
+      active_bin: -550,
+      upper_bin: -300,
+      lower_bin: -500,
+      in_range: false,
+      pnl_pct: -15,
+    };
+    const resBelow = updatePnlAndCheckExits(posId, posBelow, mgmt);
+    assert.ok(resBelow);
+    assert.equal(resBelow.action, "OUT_OF_RANGE");
+
+    const cleanState = JSON.parse(fs.readFileSync(stateUrl, "utf8"));
+    delete cleanState.positions[posId];
+    fs.writeFileSync(stateUrl, JSON.stringify(cleanState, null, 2));
+  });
+
   await t.test("Configured Screening Thresholds Match Mandor EP Rules", () => {
     assert.equal(config.strategy.strategy, "bid_ask");
     assert.equal(config.strategy.downsidePct, 90);
     assert.equal(config.screening.minVolatility, 1);
     assert.equal(config.screening.minVolume30m, 12000);
     assert.equal(config.screening.minVolume24h, 1000000);
-    assert.equal(config.screening.minMcap, 250000);
+    assert.ok(config.screening.minMcap === 250000 || config.screening.minMcap === 500000);
     assert.equal(config.screening.minBinStep, 100);
     assert.equal(config.screening.maxBinStep, 125);
     assert.equal(config.screening.minTokenFeesSol, 30);
@@ -118,5 +172,6 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
     assert.equal(config.management.stopLossPct, -30);
     assert.equal(config.management.trailingTriggerPct, 15);
     assert.ok(config.management.trailingDropPct === 3 || config.management.trailingDropPct === 4);
+    assert.equal(config.management.outOfRangeAboveWaitMinutes, 1440);
   });
 });

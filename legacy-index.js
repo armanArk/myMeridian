@@ -377,7 +377,9 @@ export async function runManagementCycle({ silent = false } = {}) {
         else sendMessage(`🔄 Management Cycle\n\n${stripThink(mgmtReport)}`).catch(() => { });
       }
       for (const p of positions) {
-        if (!p.in_range && p.minutes_out_of_range >= config.management.outOfRangeWaitMinutes) {
+        const isOorAbove = p.active_bin != null && p.upper_bin != null && p.active_bin > p.upper_bin;
+        const waitLimit = isOorAbove ? (config.management.outOfRangeAboveWaitMinutes ?? 1440) : config.management.outOfRangeWaitMinutes;
+        if (!p.in_range && p.minutes_out_of_range >= waitLimit) {
           notifyOutOfRange({ pair: p.pair, minutesOOR: p.minutes_out_of_range }).catch(() => { });
         }
       }

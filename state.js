@@ -440,14 +440,31 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     }
   }
 
-  // ── Out of range too long ──────────────────────────────────────
+  // ── Out of range handling ──────────────────────────────────────
   if (pos.out_of_range_since) {
     const minutesOOR = Math.floor((Date.now() - new Date(pos.out_of_range_since).getTime()) / 60000);
-    if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
-      return {
-        action: "OUT_OF_RANGE",
-        reason: `Out of range for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
-      };
+    const activeBin = positionData.active_bin ?? pos.bin_range?.active;
+    const upperBin = positionData.upper_bin ?? pos.bin_range?.max;
+    const isOORAbove = activeBin != null && upperBin != null && activeBin > upperBin;
+
+    if (isOORAbove) {
+      // In Single-Sided SOL (bid_ask), price pumped above entry: 100% SOL, 0 IL, no downside loss.
+      // Sesuai filosofi Mandor: jangan buru-buru cut di 60m. Berikan ruang hingga 24 jam untuk menangkap dip/pullback.
+      const waitLimitAbove = mgmtConfig.outOfRangeAboveWaitMinutes ?? 1440; // 24 hours default
+      if (waitLimitAbove != null && minutesOOR >= waitLimitAbove) {
+        return {
+          action: "OUT_OF_RANGE",
+          reason: `Out of range above for ${minutesOOR}m (limit: ${waitLimitAbove}m)`,
+        };
+      }
+    } else {
+      // OOR Below (harga jebol ke bawah): gunakan limit ketat outOfRangeWaitMinutes
+      if (minutesOOR >= mgmtConfig.outOfRangeWaitMinutes) {
+        return {
+          action: "OUT_OF_RANGE",
+          reason: `Out of range below for ${minutesOOR}m (limit: ${mgmtConfig.outOfRangeWaitMinutes}m)`,
+        };
+      }
     }
   }
 
