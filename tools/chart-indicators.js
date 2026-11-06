@@ -17,6 +17,36 @@ function safeNum(value) {
   return safeNumber(value, null);
 }
 
+export function computeStochRsi(rsiSeries, length = 14, smoothK = 3) {
+  if (!rsiSeries) return null;
+  const values = rsiSeries
+    .map((r) => (r && typeof r === "object" ? r.value : r))
+    .filter((v) => typeof v === "number" && !isNaN(v));
+  if (values.length < length) return null;
+
+  const stochList = [];
+  for (let i = length - 1; i < values.length; i++) {
+    const window = values.slice(i - length + 1, i + 1);
+    const minRsi = Math.min(...window);
+    const maxRsi = Math.max(...window);
+    const diff = maxRsi - minRsi;
+    const stoch = diff === 0 ? 100 : ((values[i] - minRsi) / diff) * 100;
+    stochList.push(stoch);
+  }
+
+  if (stochList.length < smoothK) {
+    const val = Math.round(stochList[stochList.length - 1] * 100) / 100;
+    return { raw: val, k: val };
+  }
+
+  const recentStoch = stochList.slice(-smoothK);
+  const k = recentStoch.reduce((a, b) => a + b, 0) / smoothK;
+  return {
+    raw: Math.round(stochList[stochList.length - 1] * 100) / 100,
+    k: Math.round(k * 100) / 100,
+  };
+}
+
 function buildSignalSummary(payload) {
   const latest = payload?.latest || {};
   const candle = latest?.candle || {};
@@ -25,6 +55,8 @@ function buildSignalSummary(payload) {
   const bollinger = latest?.bollinger || {};
   const supertrend = latest?.supertrend || {};
   const fibonacciLevels = latest?.fibonacci?.levels || {};
+  const rsiSeries = payload?.indicators?.rsi || [];
+  const stoch = computeStochRsi(rsiSeries);
   return {
     close: safeNum(candle.close),
     previousClose: safeNum(previousCandle.close),
@@ -39,6 +71,8 @@ function buildSignalSummary(payload) {
     fib50: safeNum(fibonacciLevels["0.500"]),
     fib618: safeNum(fibonacciLevels["0.618"]),
     fib786: safeNum(fibonacciLevels["0.786"]),
+    stochRsi: stoch?.k ?? stoch?.raw ?? null,
+    stochRsiRaw: stoch?.raw ?? null,
   };
 }
 
@@ -284,6 +318,7 @@ export async function confirmIndicatorPreset({
         confirmed: !!evaluation.confirmed,
         trigger: evaluation.trigger || null,
         rsi: evaluation.rsi ?? evaluation.signal?.rsi ?? null,
+        stoch_rsi: evaluation.signal?.stochRsi ?? null,
         bb_upper: evaluation.signal?.upperBand ?? null,
         supertrend_value: evaluation.signal?.supertrendValue ?? null,
         reason: evaluation.reason,
@@ -354,6 +389,7 @@ export async function confirmIndicatorPreset({
     side,
     trigger: matched?.trigger || null,
     rsi: matched?.rsi ?? null,
+    stoch_rsi: matched?.stoch_rsi ?? matched?.signal?.stochRsi ?? null,
     bb_upper: matched?.bb_upper ?? matched?.signal?.upperBand ?? null,
     supertrend_value: matched?.supertrend_value ?? matched?.signal?.supertrendValue ?? null,
     signal: matched?.signal || null,

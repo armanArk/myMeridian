@@ -270,14 +270,45 @@ export async function runManagementCycle({ silent = false } = {}) {
             preset: config.indicators.exitPreset || "evil_panda_exit",
             intervals: ["15_MINUTE"],
           });
-          if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
+          const maxDd = p.max_drawdown_pct ?? getTrackedPosition(p.position)?.max_drawdown_pct ?? 0;
+          const currentPnl = p.pnl_pct ?? 0;
+          const stochRsiVal = ind?.stoch_rsi ?? ind?.signal?.stochRsi ?? null;
+
+          // Mandor StochRSI Recovery Exit:
+          // Jika PnL pernah sentuh <= -10%, boleh exit jika StochRSI >= 90 DAN PnL >= +3%
+          const isStochRecovery = maxDd <= -10 && currentPnl >= 3 && stochRsiVal != null && stochRsiVal >= 90;
+
+          if (isStochRecovery) {
+            const triggerType = "recovery_stochrsi90";
+            exit = {
+              action: "INDICATOR_EXIT",
+              trigger: triggerType,
+              rsi: ind.rsi,
+              exit_indicators: {
+                rsi_2: ind.rsi,
+                stoch_rsi: stochRsiVal,
+                bb_upper: ind.bb_upper ?? ind.signal?.upperBand ?? null,
+                trigger: triggerType,
+              },
+              reason: `Evil Panda recovery exit [${triggerType}]: StochRSI ${stochRsiVal.toFixed(1)} >= 90 with PnL +${currentPnl.toFixed(2)}% after drawdown ${maxDd.toFixed(2)}% <= -10%`,
+            };
+          } else if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
             const hasProfit = (p.pnl_pct != null && p.pnl_pct > 0) || (p.pnl_usd != null && p.pnl_usd > 0);
             if (hasProfit) {
+              const triggerType = ind.trigger === "bypass_bb_rsi"
+                ? "bypass_bb_plus_rsi90"
+                : (ind.trigger === "bypass_rsi" || ind.trigger === "rsi_extreme" ? "bypass_rsi90" : (ind.trigger || "indicator_exit"));
               exit = {
                 action: "INDICATOR_EXIT",
-                trigger: ind.trigger,
+                trigger: triggerType,
                 rsi: ind.rsi,
-                reason: `Evil Panda exit [${ind.trigger}]: ${ind.reason} (PnL: +${p.pnl_pct?.toFixed(2) ?? 0}%)`,
+                exit_indicators: {
+                  rsi_2: ind.rsi,
+                  stoch_rsi: stochRsiVal,
+                  bb_upper: ind.bb_upper ?? ind.signal?.upperBand ?? null,
+                  trigger: triggerType,
+                },
+                reason: `Evil Panda exit [${triggerType}]: ${ind.reason} (PnL: +${p.pnl_pct?.toFixed(2) ?? 0}%)`,
               };
             }
           }
@@ -860,7 +891,30 @@ Summarize the current portfolio health, total fees earned, and performance of al
               preset: config.indicators.exitPreset || "evil_panda_exit",
               intervals: ["15_MINUTE"],
             });
-            if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
+            const maxDd = p.max_drawdown_pct ?? getTrackedPosition(p.position)?.max_drawdown_pct ?? 0;
+            const currentPnl = p.pnl_pct ?? 0;
+            const stochRsiVal = ind?.stoch_rsi ?? ind?.signal?.stochRsi ?? null;
+
+            // Mandor StochRSI Recovery Exit:
+            // Jika PnL pernah sentuh <= -10%, boleh exit jika StochRSI >= 90 DAN PnL >= +3%
+            const isStochRecovery = maxDd <= -10 && currentPnl >= 3 && stochRsiVal != null && stochRsiVal >= 90;
+
+            if (isStochRecovery) {
+              const triggerType = "recovery_stochrsi90";
+              indicatorExit = {
+                action: "INDICATOR_EXIT",
+                trigger: triggerType,
+                rsi: ind.rsi,
+                stoch_rsi: stochRsiVal,
+                exit_indicators: {
+                  rsi_2: ind.rsi,
+                  stoch_rsi: stochRsiVal,
+                  bb_upper: ind.bb_upper ?? ind.signal?.upperBand ?? null,
+                  trigger: triggerType,
+                },
+                reason: `Evil Panda recovery exit [${triggerType}]: StochRSI ${stochRsiVal.toFixed(1)} >= 90 with PnL +${currentPnl.toFixed(2)}% after drawdown ${maxDd.toFixed(2)}% <= -10%`,
+              };
+            } else if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
               const hasProfit = (p.pnl_pct != null && p.pnl_pct > 0) || (p.pnl_usd != null && p.pnl_usd > 0);
               if (hasProfit) {
                 const triggerType = ind.trigger === "bypass_bb_rsi"
@@ -870,8 +924,10 @@ Summarize the current portfolio health, total fees earned, and performance of al
                   action: "INDICATOR_EXIT",
                   trigger: triggerType,
                   rsi: ind.rsi,
+                  stoch_rsi: stochRsiVal,
                   exit_indicators: {
                     rsi_2: ind.rsi,
+                    stoch_rsi: stochRsiVal,
                     bb_upper: ind.bb_upper ?? ind.signal?.upperBand ?? null,
                     trigger: triggerType,
                   },

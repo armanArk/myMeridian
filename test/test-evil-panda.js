@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { config } from "../config.js";
 import { updatePnlAndCheckExits, trackPosition } from "../state.js";
 import { getDeterministicCloseRule } from "../exit-rules.js";
-import { confirmIndicatorPreset, evaluatePreset } from "../tools/chart-indicators.js";
+import { confirmIndicatorPreset, evaluatePreset, computeStochRsi } from "../tools/chart-indicators.js";
 
 test("Evil Panda Strategy Rules Verification", async (t) => {
   await t.test("Exit Rules - Stop Loss at -30%", () => {
@@ -99,6 +99,38 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
     const exitRes = evaluatePreset("exit", "evil_panda_exit", overboughtPayload);
     assert.equal(exitRes.confirmed, true);
     assert.equal(exitRes.trigger, "bypass_rsi");
+  });
+
+  await t.test("Mandor Rule - StochRSI Computation & Recovery Exit Condition", () => {
+    // 1. Test StochRSI calculation on synthetic RSI series
+    // Window of 15 values where min is 20, max is 80, and latest is 80 -> StochRSI raw should be 100
+    const rsiSeries = [
+      { value: 50 }, { value: 40 }, { value: 30 }, { value: 20 }, { value: 25 },
+      { value: 35 }, { value: 45 }, { value: 55 }, { value: 65 }, { value: 70 },
+      { value: 75 }, { value: 78 }, { value: 79 }, { value: 80 }, { value: 80 }
+    ];
+    const stoch = computeStochRsi(rsiSeries, 14, 3);
+    assert.ok(stoch != null);
+    assert.equal(stoch.raw, 100);
+    assert.ok(stoch.k >= 90);
+
+    // 2. Test Mandor Recovery Condition logic:
+    // "jika PnL pernah sentuh -10%, boleh exit jika nanti stochrsi 90 dan pnl sentuh +3%"
+    function checkMandorRecovery(maxDrawdown, currentPnl, stochRsiK) {
+      return maxDrawdown <= -10 && currentPnl >= 3 && stochRsiK != null && stochRsiK >= 90;
+    }
+
+    // Scenario A: Drawdown -14%, bounced to +3.5%, StochRSI 92 -> Qualifies for recovery exit!
+    assert.equal(checkMandorRecovery(-14, 3.5, 92), true);
+
+    // Scenario B: Drawdown only -6%, bounced to +3.5%, StochRSI 92 -> Does NOT qualify (never hit -10%)
+    assert.equal(checkMandorRecovery(-6, 3.5, 92), false);
+
+    // Scenario C: Drawdown -14%, current PnL only +1.8%, StochRSI 92 -> Does NOT qualify (not yet +3%)
+    assert.equal(checkMandorRecovery(-14, 1.8, 92), false);
+
+    // Scenario D: Drawdown -14%, bounced to +3.5%, StochRSI 75 -> Does NOT qualify (StochRSI < 90)
+    assert.equal(checkMandorRecovery(-14, 3.5, 75), false);
   });
 
   await t.test("Exit Rules - OOR Above (relaxed to 24h) vs OOR Below (cut at limit)", () => {
