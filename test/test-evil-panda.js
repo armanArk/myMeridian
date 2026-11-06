@@ -228,4 +228,9 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
     assert.ok(config.management.trailingDropPct === 3 || config.management.trailingDropPct === 4);
     assert.equal(config.management.outOfRangeAboveWaitMinutes, 1440);
   });
+
+  await t.test("Cost Optimization - Dev Tax / Jupiter Referral Fee Disabled", () => {
+    assert.equal(config.jupiter.referralAccount, "", "Referral account should be empty");
+    assert.equal(config.jupiter.referralFeeBps, 0, "Referral fee bps should be 0");
+  });
 });
