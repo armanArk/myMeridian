@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { updatePnlAndCheckExits, trackPosition } from "../state.js";
 import { getDeterministicCloseRule } from "../exit-rules.js";
 import { confirmIndicatorPreset, evaluatePreset, computeStochRsi } from "../tools/chart-indicators.js";
+import { isHiveMindEnabled, getSharedLessonsForPrompt } from "../hivemind.js";
 
 test("Evil Panda Strategy Rules Verification", async (t) => {
   await t.test("Exit Rules - Stop Loss at -30%", () => {
@@ -232,5 +233,11 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
   await t.test("Cost Optimization - Dev Tax / Jupiter Referral Fee Disabled", () => {
     assert.equal(config.jupiter.referralAccount, "", "Referral account should be empty");
     assert.equal(config.jupiter.referralFeeBps, 0, "Referral fee bps should be 0");
+  });
+
+  await t.test("Quality & Privacy Optimization - HiveMind Disabled", () => {
+    assert.equal(config.hiveMind.enabled, false, "HiveMind config enabled should be false");
+    assert.equal(isHiveMindEnabled(), false, "isHiveMindEnabled() should return false");
+    assert.equal(getSharedLessonsForPrompt(), null, "getSharedLessonsForPrompt() should return null");
   });
 });
