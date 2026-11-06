@@ -35,15 +35,35 @@ function load() {
   try {
     return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
   } catch (err) {
-    log("state_error", `Failed to read state.json: ${err.message}`);
-    return { positions: {}, lastUpdated: null };
+    log("state_error", `Failed to read state.json: ${err.message}. Trying backup...`);
+    const bakFile = `${STATE_FILE}.bak`;
+    if (fs.existsSync(bakFile)) {
+      try {
+        const restored = JSON.parse(fs.readFileSync(bakFile, "utf8"));
+        log("state_warn", `Successfully restored state from backup (${bakFile})`);
+        return restored;
+      } catch (bakErr) {
+        log("state_error", `Failed to read backup state file: ${bakErr.message}`);
+      }
+    }
+    return { positions: {}, recentEvents: [], lastUpdated: null };
   }
 }
 
 function save(state) {
   try {
     state.lastUpdated = new Date().toISOString();
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+    const tmpFile = `${STATE_FILE}.tmp`;
+    const bakFile = `${STATE_FILE}.bak`;
+    const content = JSON.stringify(state, null, 2);
+
+    fs.writeFileSync(tmpFile, content);
+    if (fs.existsSync(STATE_FILE)) {
+      try {
+        fs.copyFileSync(STATE_FILE, bakFile);
+      } catch {}
+    }
+    fs.renameSync(tmpFile, STATE_FILE);
   } catch (err) {
     log("state_error", `Failed to write state.json: ${err.message}`);
   }

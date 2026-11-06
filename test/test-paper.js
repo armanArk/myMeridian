@@ -19,6 +19,17 @@ test("Paper Virtual Trading Engine Test Suite", async (t) => {
   if (fs.existsSync(TEST_PAPER_STORE)) {
     backup = fs.readFileSync(TEST_PAPER_STORE, "utf8");
   }
+  // Initialize clean test store
+  const cleanTestStore = {
+    realized_pnl_sol: 0.0,
+    realized_pnl_usd: 0.0,
+    total_trades: 0,
+    winning_trades: 0,
+    positions: {},
+    trade_history: [],
+    last_updated: new Date().toISOString(),
+  };
+  fs.writeFileSync(TEST_PAPER_STORE, JSON.stringify(cleanTestStore, null, 2));
 
   t.after(() => {
     if (backup) {

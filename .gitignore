@@ -30,6 +30,8 @@ signal-weights.json
 
 # Logs
 logs/
+*.bak
+*.tmp
 
 # OS
 .DS_Store

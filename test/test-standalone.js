@@ -219,7 +219,7 @@ console.log("\n[6] rejectToken / rejectPool — missing data never passes");
   const base = {
     id: MINT, updatedAt: new Date(now - 10_000).toISOString(),
     audit: { mintAuthorityDisabled: true, freezeAuthorityDisabled: true, topHoldersPercentage: 30, botHoldersPercentage: 10 },
-    fees: 50, launchpad: null, holderCount: 800, mcap: 400_000, organicScore: 75,
+    fees: 50, launchpad: null, holderCount: 2000, mcap: 600_000, organicScore: 75,
     createdAt: new Date(now - 3 * 3600_000).toISOString(),
   };
   check("healthy token passes", rejectToken(base, MINT, config.screening, now) === null);
@@ -241,7 +241,7 @@ console.log("\n[6] rejectToken / rejectPool — missing data never passes");
   check("wrong quote side rejected", rejectPool({ ...pool, token_y: { ...pool.token_y, address: "USDTMint11111111111111111111111111111111111" } }, MINT, config.screening) !== null);
   check("pool token warning rejected", rejectPool({ ...pool, token_x: { ...pool.token_x, warnings: [{ severity: "danger" }] } }, MINT, config.screening) !== null);
   check("unknown TVL rejected", rejectPool({ ...pool, tvl: null }, MINT, config.screening) !== null);
-  check("TVL above cap rejected", rejectPool({ ...pool, tvl: 10_000_000 }, MINT, config.screening) !== null);
+  check("TVL above cap rejected", rejectPool({ ...pool, tvl: 10_000_000 }, MINT, { ...config.screening, maxTvl: 5_000_000 }) !== null);
 }
 
 // ─── Coordination + rules ────────────────────────────────────────────────────
@@ -260,7 +260,7 @@ console.log("\n[7] withWalletLock — exits jump the queue, never concurrent");
 console.log("\n[8] deterministic rules");
 {
   const pos = base => ({ position: "Pos111111111111111111111111111111111111111", pair: "T/SOL", pnl_pct: 0, active_bin: 100, upper_bin: 100, minutes_out_of_range: 0, age_minutes: 90, fee_per_tvl_24h: 10, ...base });
-  const mgmt = { ...config.management };
+  const mgmt = { ...config.management, trailingTakeProfit: false };
   check("stop loss closes", getDeterministicCloseRule(pos({ pnl_pct: -60 }), mgmt)?.rule === 1);
   check("take profit closes", getDeterministicCloseRule(pos({ pnl_pct: 10 }), mgmt)?.rule === 2);
   check("pumped far above range closes", getDeterministicCloseRule(pos({ active_bin: 130 }), mgmt)?.rule === 3);

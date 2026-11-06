@@ -34,7 +34,17 @@ function loadPaperStore() {
   try {
     return JSON.parse(fs.readFileSync(PAPER_STORE_FILE, "utf8"));
   } catch (err) {
-    log("paper_error", `Failed to read paper-positions.json: ${err.message}`);
+    log("paper_error", `Failed to read paper-positions.json: ${err.message}. Trying backup...`);
+    const bakFile = `${PAPER_STORE_FILE}.bak`;
+    if (fs.existsSync(bakFile)) {
+      try {
+        const restored = JSON.parse(fs.readFileSync(bakFile, "utf8"));
+        log("paper_warn", `Successfully restored paper store from backup (${bakFile})`);
+        return restored;
+      } catch (bakErr) {
+        log("paper_error", `Failed to read backup file: ${bakErr.message}`);
+      }
+    }
     return {
       realized_pnl_sol: 0.0,
       realized_pnl_usd: 0.0,
@@ -50,7 +60,22 @@ function loadPaperStore() {
 function savePaperStore(store) {
   try {
     store.last_updated = new Date().toISOString();
-    fs.writeFileSync(PAPER_STORE_FILE, JSON.stringify(store, null, 2));
+    const tmpFile = `${PAPER_STORE_FILE}.tmp`;
+    const bakFile = `${PAPER_STORE_FILE}.bak`;
+    const content = JSON.stringify(store, null, 2);
+
+    // 1. Write atomic temp file
+    fs.writeFileSync(tmpFile, content);
+
+    // 2. Keep backup of previous healthy store
+    if (fs.existsSync(PAPER_STORE_FILE)) {
+      try {
+        fs.copyFileSync(PAPER_STORE_FILE, bakFile);
+      } catch {}
+    }
+
+    // 3. Atomically replace target
+    fs.renameSync(tmpFile, PAPER_STORE_FILE);
   } catch (err) {
     log("paper_error", `Failed to write paper-positions.json: ${err.message}`);
   }

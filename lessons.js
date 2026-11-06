@@ -51,13 +51,36 @@ function load() {
   }
   try {
     return JSON.parse(fs.readFileSync(LESSONS_FILE, "utf8"));
-  } catch {
+  } catch (err) {
+    log("lessons_error", `Failed to read lessons.json: ${err?.message}. Trying backup...`);
+    const bakFile = `${LESSONS_FILE}.bak`;
+    if (fs.existsSync(bakFile)) {
+      try {
+        const restored = JSON.parse(fs.readFileSync(bakFile, "utf8"));
+        log("lessons_warn", `Successfully restored lessons from backup (${bakFile})`);
+        return restored;
+      } catch {}
+    }
     return { lessons: [], performance: [] };
   }
 }
 
 function save(data) {
-  fs.writeFileSync(LESSONS_FILE, JSON.stringify(data, null, 2));
+  try {
+    const tmpFile = `${LESSONS_FILE}.tmp`;
+    const bakFile = `${LESSONS_FILE}.bak`;
+    const content = JSON.stringify(data, null, 2);
+
+    fs.writeFileSync(tmpFile, content);
+    if (fs.existsSync(LESSONS_FILE)) {
+      try {
+        fs.copyFileSync(LESSONS_FILE, bakFile);
+      } catch {}
+    }
+    fs.renameSync(tmpFile, LESSONS_FILE);
+  } catch (err) {
+    log("lessons_error", `Failed to write lessons.json: ${err.message}`);
+  }
 }
 
 function buildSignalSnapshot(perf) {
