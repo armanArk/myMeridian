@@ -627,7 +627,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
       return screenReport;
     }
 
-    if (passing.length === 1 && config.strategy?.strategy !== "bid_ask") {
+    if (passing.length === 1) {
       const skipReason = getLoneCandidateSkipReason(passing[0]);
       if (skipReason) {
         const candidateName = passing[0].pool?.name || "unknown";
