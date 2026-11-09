@@ -61,6 +61,13 @@ function isFeeGeneratingDeploy(deploy) {
   return Number.isFinite(feeEarnedPct) && feeEarnedPct >= minFeeEarnedPct;
 }
 
+function isEligibleRepeatDeploy(deploy) {
+  if (config.management.repeatDeployCooldownAllCloses ?? true) {
+    return true;
+  }
+  return isFeeGeneratingDeploy(deploy);
+}
+
 function setPoolCooldown(entry, hours, reason) {
   const cooldownUntil = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
   entry.cooldown_until = cooldownUntil;
@@ -199,13 +206,13 @@ export function recordPoolDeploy(poolAddress, deployData) {
     const rawScope = String(config.management.repeatDeployCooldownScope || "token").toLowerCase();
     const scope = ["pool", "token", "both"].includes(rawScope) ? rawScope : "token";
     const recentRepeatDeploys = entry.deploys.slice(-triggerCount);
-    const repeatedFeeGeneratingDeploys =
+    const repeatedEligibleDeploys =
       cooldownHours > 0 &&
       recentRepeatDeploys.length >= triggerCount &&
-      recentRepeatDeploys.every((d) => d.pnl_pct != null && isFeeGeneratingDeploy(d));
+      recentRepeatDeploys.every((d) => d.pnl_pct != null && isEligibleRepeatDeploy(d));
 
-    if (repeatedFeeGeneratingDeploys) {
-      const reason = `repeat fee-generating deploys (${triggerCount}x)`;
+    if (repeatedEligibleDeploys) {
+      const reason = `repeat deploy cooldown (${triggerCount}x)`;
       if (scope === "pool" || scope === "both" || !entry.base_mint) {
         const poolCooldownUntil = setPoolCooldown(entry, cooldownHours, reason);
         log("pool-memory", `Cooldown set for ${entry.name} until ${poolCooldownUntil} (${reason})`);

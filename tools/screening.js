@@ -757,9 +757,9 @@ export async function getTopCandidates({ limit = 10 } = {}) {
             pool: pool.pool,
             confirmation: {
               enabled: true,
-              confirmed: true,
+              confirmed: false,
               skipped: true,
-              reason: `Indicator confirmation unavailable: ${error.message}`,
+              reason: `Indicator confirmation unavailable: ${error.message} (strict gate: fail-closed)`,
               intervals: [],
             },
           };

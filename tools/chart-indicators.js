@@ -349,13 +349,13 @@ export async function confirmIndicatorPreset({
   if (successful.length === 0) {
     return {
       enabled: true,
-      confirmed: true,
+      confirmed: false,
       skipped: true,
       preset,
       side,
       trigger: null,
       rsi: null,
-      reason: "Indicator API unavailable; falling back to existing logic",
+      reason: "Indicator API unavailable; cannot confirm signal (strict gate: fail-closed)",
       intervals: results,
     };
   }
@@ -383,7 +383,20 @@ export async function confirmIndicatorPreset({
           intervals: results,
         };
       }
-    } catch (_) {}
+    } catch (err) {
+      log("indicators_warn", `Exit gate check failed for ${mint.slice(0, 8)}: ${err.message}`);
+      return {
+        enabled: true,
+        confirmed: false,
+        skipped: true,
+        preset,
+        side,
+        trigger: null,
+        rsi: null,
+        reason: `Rejected entry: unable to verify 15_MINUTE exit condition (${err.message})`,
+        intervals: results,
+      };
+    }
   }
 
   const matched = successful.find((entry) => entry.confirmed) || successful[0];

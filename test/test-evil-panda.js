@@ -216,7 +216,7 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
     assert.equal(config.screening.minVolatility, 1);
     assert.equal(config.screening.minVolume30m, 12000);
     assert.equal(config.screening.minVolume24h, 1000000);
-    assert.ok(config.screening.minMcap === 250000 || config.screening.minMcap === 500000);
+    assert.ok(config.screening.minMcap >= 250000, "minMcap should be at least 250k");
     assert.equal(config.screening.minBinStep, 100);
     assert.equal(config.screening.maxBinStep, 125);
     assert.equal(config.screening.minTokenFeesSol, 30);

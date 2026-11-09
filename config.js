@@ -174,15 +174,17 @@ export const config = {
     oorCooldownTriggerCount: u.oorCooldownTriggerCount ?? 3,
     oorCooldownHours:       u.oorCooldownHours       ?? 12,
     repeatDeployCooldownEnabled: u.repeatDeployCooldownEnabled ?? true,
-    repeatDeployCooldownTriggerCount: u.repeatDeployCooldownTriggerCount ?? 3,
-    repeatDeployCooldownHours: u.repeatDeployCooldownHours ?? 12,
-    repeatDeployCooldownScope: u.repeatDeployCooldownScope ?? "token", // pool | token | both
+    repeatDeployCooldownTriggerCount: u.repeatDeployCooldownTriggerCount ?? 1,
+    repeatDeployCooldownHours: u.repeatDeployCooldownHours ?? 4,
+    repeatDeployCooldownScope: u.repeatDeployCooldownScope ?? "both", // pool | token | both
+    repeatDeployCooldownAllCloses: u.repeatDeployCooldownAllCloses ?? true,
     repeatDeployCooldownMinFeeEarnedPct: u.repeatDeployCooldownMinFeeEarnedPct ?? u.repeatDeployCooldownMinFeeYieldPct ?? 0,
     minVolumeToRebalance:  u.minVolumeToRebalance  ?? 1000,
     stopLossPct:           u.stopLossPct           ?? u.emergencyPriceDropPct ?? -50,
     takeProfitPct:         u.takeProfitPct         ?? u.takeProfitFeePct ?? 5,
     minFeePerTvl24h:       u.minFeePerTvl24h       ?? 7,
     minAgeBeforeYieldCheck: u.minAgeBeforeYieldCheck ?? 60, // minutes before low yield can trigger close
+    evilPandaMinProfitPct: u.evilPandaMinProfitPct ?? 0.5, // min PnL % required before evil panda indicators can exit in profit
     minSolToOpen:          u.minSolToOpen          ?? 0.55,
     deployAmountSol:       u.deployAmountSol       ?? 0.5,
     gasReserve:            u.gasReserve            ?? 0.2,
