@@ -1,3 +1,5 @@
+import dns from "node:dns";
+dns.setDefaultResultOrder?.("ipv4first");
 import "./envcrypt.js";
 import cron from "node-cron";
 import readline from "readline";
