@@ -131,7 +131,7 @@ function getVolatilityTimeframe(sourceTimeframe) {
   return sourceMinutes != null && sourceMinutes >= minMinutes ? source : MIN_VOLATILITY_TIMEFRAME;
 }
 
-function getRawPoolScreeningRejectReason(pool, s) {
+export function getRawPoolScreeningRejectReason(pool, s) {
   const base = pool?.token_x || {};
   const quote = pool?.token_y || {};
   const binStep = numeric(pool?.dlmm_params?.bin_step);
@@ -172,14 +172,22 @@ function getRawPoolScreeningRejectReason(pool, s) {
 
   const vol30m = numeric(pool?.volume_30m ?? (s.timeframe === "30m" ? pool?.volume : null));
   const vol24h = numeric(pool?.volume_24h ?? pool?.volume24h ?? (s.timeframe === "24h" ? pool?.volume : null));
-  const meetsVol30m = s.minVolume30m != null && vol30m != null && vol30m >= s.minVolume30m;
-  const meetsVol24h = s.minVolume24h != null && vol24h != null && vol24h >= s.minVolume24h;
-  if (s.minVolume30m != null && s.minVolume24h != null) {
-    if (!meetsVol30m && !meetsVol24h) {
-      return `neither 30m volume ($${vol30m ?? "unknown"} < $${s.minVolume30m}) nor 24h volume ($${vol24h ?? "unknown"} < $${s.minVolume24h}) met threshold`;
+
+  // Mandor EP Rule: Volume 30m >= 12k is MANDATORY (active trading momentum required for DLMM fee harvesting)
+  if (s.minVolume30m != null && s.minVolume30m > 0) {
+    if (vol30m == null || vol30m < s.minVolume30m) {
+      return `30m volume $${vol30m ?? "unknown"} below minVolume30m $${s.minVolume30m}`;
     }
-  } else if (s.minVolume30m != null && !meetsVol30m) {
-    return `30m volume $${vol30m ?? "unknown"} below minVolume30m $${s.minVolume30m}`;
+  }
+
+  // 24h volume check: established tokens (>= 24h old or age unknown) must also meet 24h volume threshold
+  const tokenAgeHours = createdAt ? (Date.now() - createdAt) / 3_600_000 : null;
+  if (s.minVolume24h != null && s.minVolume24h > 0) {
+    if (tokenAgeHours == null || tokenAgeHours >= 24) {
+      if (vol24h == null || vol24h < s.minVolume24h) {
+        return `24h volume $${vol24h ?? "unknown"} below minVolume24h $${s.minVolume24h}`;
+      }
+    }
   }
 
   if (s.minTvl != null && s.minTvl > 0 && (tvl == null || tvl < s.minTvl)) return `TVL ${tvl ?? "unknown"} below minTvl ${s.minTvl}`;

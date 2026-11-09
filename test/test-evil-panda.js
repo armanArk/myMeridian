@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { updatePnlAndCheckExits, trackPosition } from "../state.js";
 import { getDeterministicCloseRule } from "../exit-rules.js";
 import { confirmIndicatorPreset, evaluatePreset, computeStochRsi } from "../tools/chart-indicators.js";
+import { getRawPoolScreeningRejectReason } from "../tools/screening.js";
 import { isHiveMindEnabled, getSharedLessonsForPrompt } from "../hivemind.js";
 
 test("Evil Panda Strategy Rules Verification", async (t) => {
@@ -233,6 +234,65 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
   await t.test("Cost Optimization - Dev Tax / Jupiter Referral Fee Disabled", () => {
     assert.equal(config.jupiter.referralAccount, "", "Referral account should be empty");
     assert.equal(config.jupiter.referralFeeBps, 0, "Referral fee bps should be 0");
+  });
+
+  await t.test("Screening - Mandor Mandatory 30m Volume & 24h Volume Rules", () => {
+    const s = {
+      ...config.screening,
+      minVolume30m: 12000,
+      minVolume24h: 1000000,
+      minTvl: 50000,
+      minBinStep: 100,
+      maxBinStep: 125,
+      minMcap: 250000,
+      requireSolQuote: true,
+      timeframe: "30m",
+    };
+
+    const baseGoodPool = {
+      token_x: { symbol: "GOOD", address: "GoodMint", market_cap: 1000000, organic_score: 80, created_at: Date.now() - 48 * 3600000 },
+      token_y: { symbol: "SOL", address: "So11111111111111111111111111111111111111112", organic_score: 90 },
+      pool_type: "dlmm",
+      dlmm_params: { bin_step: 100 },
+      tvl: 100000,
+      active_tvl: 80000,
+      volatility: 2.5,
+      base_token_holders: 2000,
+      volume: 15000,
+      volume_30m: 15000,
+      volume_24h: 1500000,
+    };
+
+    // 1. Perfectly qualified pool passes
+    assert.equal(getRawPoolScreeningRejectReason(baseGoodPool, s), null);
+
+    // 2. Dead 30m volume MUST FAIL even if 24h volume is huge ($10M)
+    const dead30mPool = {
+      ...baseGoodPool,
+      volume_30m: 2000,
+      volume_24h: 10000000,
+    };
+    const resDead = getRawPoolScreeningRejectReason(dead30mPool, s);
+    assert.ok(resDead && resDead.includes("30m volume"));
+
+    // 3. Fresh viral token (< 24h old) with strong 30m volume passes even if 24h vol is under $1M
+    const freshViralPool = {
+      ...baseGoodPool,
+      token_x: { ...baseGoodPool.token_x, created_at: Date.now() - 4 * 3600000 }, // 4h old
+      volume_30m: 25000,
+      volume_24h: 400000, // not yet $1M because it's only 4h old
+    };
+    assert.equal(getRawPoolScreeningRejectReason(freshViralPool, s), null);
+
+    // 4. Mature token (>= 24h old) with good 30m volume but low 24h volume (< 1M) fails 24h volume rule
+    const matureLow24hPool = {
+      ...baseGoodPool,
+      token_x: { ...baseGoodPool.token_x, created_at: Date.now() - 72 * 3600000 }, // 3 days old
+      volume_30m: 15000,
+      volume_24h: 300000, // under $1M
+    };
+    const resLow24h = getRawPoolScreeningRejectReason(matureLow24hPool, s);
+    assert.ok(resLow24h && resLow24h.includes("24h volume"));
   });
 
   await t.test("Quality & Privacy Optimization - HiveMind Disabled", () => {

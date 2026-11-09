@@ -532,12 +532,19 @@ export async function runScreeningCycle({ silent = false } = {}) {
         return false;
       }
 
-      // Mandor EP Rule: Top 10 Holders < 30%
+      // Mandor EP Rule: Top 10 Holders < 30% (Fail-Closed)
       const top10 = sec?.top10_pct ?? ti?.audit?.top_holders_pct;
-      if (top10 != null && config.screening.maxTop10Pct != null && top10 >= config.screening.maxTop10Pct) {
-        log("screening", `Top10 filter: dropped ${pool.name} — top10 ${top10}% >= ${config.screening.maxTop10Pct}%`);
-        filteredOut.push({ name: pool.name, reason: `top 10 holders ${top10}% >= ${config.screening.maxTop10Pct}%` });
-        return false;
+      if (config.screening.maxTop10Pct != null) {
+        if (top10 == null) {
+          log("screening", `Top10 filter: dropped ${pool.name} — top 10 holder data unverified/null (required < ${config.screening.maxTop10Pct}%)`);
+          filteredOut.push({ name: pool.name, reason: `top 10 holder data unverified/null (required < ${config.screening.maxTop10Pct}%)` });
+          return false;
+        }
+        if (top10 >= config.screening.maxTop10Pct) {
+          log("screening", `Top10 filter: dropped ${pool.name} — top10 ${top10}% >= ${config.screening.maxTop10Pct}%`);
+          filteredOut.push({ name: pool.name, reason: `top 10 holders ${top10}% >= ${config.screening.maxTop10Pct}%` });
+          return false;
+        }
       }
 
       // Mandor EP Rule: Insiders < 10%
@@ -564,12 +571,19 @@ export async function runScreeningCycle({ silent = false } = {}) {
         return false;
       }
 
-      // Mandor EP Rule: Akumulasi Fee (GMGN) >= 30 SOL
+      // Mandor EP Rule: Akumulasi Fee (GMGN/Jupiter) >= 30 SOL (Fail-Closed)
       const feesSol = sec?.total_fees_sol ?? ti?.global_fees_sol;
-      if (feesSol != null && config.screening.minTokenFeesSol != null && feesSol < config.screening.minTokenFeesSol) {
-        log("screening", `Fees filter: dropped ${pool.name} — fees ${feesSol} SOL < ${config.screening.minTokenFeesSol} SOL`);
-        filteredOut.push({ name: pool.name, reason: `total fees ${feesSol} SOL < ${config.screening.minTokenFeesSol} SOL` });
-        return false;
+      if (config.screening.minTokenFeesSol != null && config.screening.minTokenFeesSol > 0) {
+        if (feesSol == null) {
+          log("screening", `Fees filter: dropped ${pool.name} — fee data unverified/null (required >= ${config.screening.minTokenFeesSol} SOL)`);
+          filteredOut.push({ name: pool.name, reason: `token fees unverified/null (required >= ${config.screening.minTokenFeesSol} SOL)` });
+          return false;
+        }
+        if (feesSol < config.screening.minTokenFeesSol) {
+          log("screening", `Fees filter: dropped ${pool.name} — fees ${feesSol} SOL < ${config.screening.minTokenFeesSol} SOL`);
+          filteredOut.push({ name: pool.name, reason: `total fees ${feesSol} SOL < ${config.screening.minTokenFeesSol} SOL` });
+          return false;
+        }
       }
 
       return true;
