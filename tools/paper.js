@@ -549,6 +549,11 @@ export async function closePaperPosition({ position_address, reason = "agent dec
   store.total_trades += 1;
   if (sim.pnl_sol > 0) store.winning_trades += 1;
 
+  const exitTvlUsd = Number(poolDetail?.active_tvl ?? poolDetail?.tvl ?? 0);
+  const entryTvlUsd = Number(pos.entry_snapshot?.entry_tvl ?? pos.entry_tvl ?? 0);
+  const poolTvlRetentionPct = entryTvlUsd > 0 ? Math.round((exitTvlUsd / entryTvlUsd) * 1000) / 10 : null;
+  const isLiquidityDrained = entryTvlUsd > 2000 && exitTvlUsd < 500;
+
   store.trade_history.unshift({
     position: pos.id,
     pair: pos.pair,
@@ -567,6 +572,11 @@ export async function closePaperPosition({ position_address, reason = "agent dec
     exit_indicators: exitIndicators,
     peak_pnl_pct: peakPnlPct,
     max_drawdown_pct: maxDrawdownPct,
+    entry_tvl_usd: entryTvlUsd || null,
+    exit_tvl_usd: exitTvlUsd || null,
+    pool_tvl_retention_pct: poolTvlRetentionPct,
+    is_liquidity_drained: isLiquidityDrained,
+    engine_phase: "phase2_24h_fee",
     reason,
     entry_snapshot: pos.entry_snapshot || null,
   });
@@ -599,6 +609,8 @@ export async function closePaperPosition({ position_address, reason = "agent dec
       exit_indicators: exitIndicators,
       peak_pnl_pct: peakPnlPct,
       max_drawdown_pct: maxDrawdownPct,
+      entry_tvl: entryTvlUsd || null,
+      exit_tvl: exitTvlUsd || null,
       entry_snapshot: pos.entry_snapshot || null,
       is_paper: true,
     });
