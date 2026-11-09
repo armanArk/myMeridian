@@ -232,6 +232,9 @@ function computeSimulatedPositionState({ pos, currentActiveBin, currentPrice, so
     age_minutes: ageMinutes,
     active_bin: currentActiveBin,
     current_price: currentPrice,
+    fee_per_tvl_24h: poolDetail?.fee_tvl_24h != null
+      ? Number(poolDetail.fee_tvl_24h) * 100
+      : (poolDetail?.fee_tvl_ratio != null ? Number(poolDetail.fee_tvl_ratio) * 100 : null),
   };
 }
 
@@ -458,6 +461,7 @@ export async function getPaperPositions({ force = false, silent = false } = {}) 
       upper_bin: pos.upper_bin,
       active_bin: activeBin,
       in_range: sim.in_range,
+      fee_per_tvl_24h: sim.fee_per_tvl_24h ?? null,
       unclaimed_fees_usd: sim.unclaimed_fees_usd,
       total_value_usd: sim.total_value_usd,
       pnl_usd: sim.pnl_usd,

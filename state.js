@@ -488,19 +488,29 @@ export function updatePnlAndCheckExits(position_address, positionData, mgmtConfi
     }
   }
 
-  // ── Low yield (only after position has had time to accumulate fees) ───
+  // ── Mandor "Fee Seret" Exit Rule (Low Yield after incubation) ─────
+  // Sesuai prinsip Mandor: "Lebih sering cutlose dibawah 10% karena udh keliatan kalo seret lngsng closed."
+  // Hanya berlaku setelah posisi diberikan waktu cukup (default: 24 jam / 1440 menit).
+  // Jika setelah 24 jam fee harian pool terbukti seret (< minFeePerTvl24h):
+  // Bot menutup posisi lebih awal (mengunci profit atau membatasi loss < 10%).
   const { age_minutes } = positionData;
-  const minAgeForYieldCheck = mgmtConfig.minAgeBeforeYieldCheck ?? 60;
+  const minAgeForYieldCheck = mgmtConfig.minAgeBeforeYieldCheck ?? 1440;
+  const minYieldThreshold = mgmtConfig.minFeePerTvl24h ?? 7;
   if (
     fee_per_tvl_24h != null &&
-    mgmtConfig.minFeePerTvl24h != null &&
-    fee_per_tvl_24h < mgmtConfig.minFeePerTvl24h &&
+    minYieldThreshold != null &&
+    fee_per_tvl_24h < minYieldThreshold &&
     (age_minutes == null || age_minutes >= minAgeForYieldCheck)
   ) {
-    return {
-      action: "LOW_YIELD",
-      reason: `Low yield: fee/TVL ${fee_per_tvl_24h.toFixed(2)}% < min ${mgmtConfig.minFeePerTvl24h}% (age: ${age_minutes ?? "?"}m)`,
-    };
+    const isProfitOrMildLoss = currentPnlPct == null || currentPnlPct > -10;
+    if (isProfitOrMildLoss) {
+      const pnlDisplay = currentPnlPct != null ? (currentPnlPct >= 0 ? `+${currentPnlPct.toFixed(2)}%` : `${currentPnlPct.toFixed(2)}%`) : "n/a";
+      return {
+        action: "FEE_SERET",
+        trigger: "fee_seret",
+        reason: `Mandor fee seret exit: fee/TVL ${fee_per_tvl_24h.toFixed(2)}% < ${minYieldThreshold}% setelah di-hold ${Math.round((age_minutes || 0) / 60)} jam (PnL: ${pnlDisplay})`,
+      };
+    }
   }
 
   return null;
