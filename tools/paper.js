@@ -114,7 +114,7 @@ async function fetchJupiterPrices(mints) {
   }
 }
 
-async function fetchPoolDetail(poolAddress, timeframe = "5m") {
+async function fetchPoolDetail(poolAddress, timeframe = "24h") {
   try {
     const url = `https://pool-discovery-api.datapi.meteora.ag/pools?page_size=1&filter_by=${encodeURIComponent(`pool_address=${poolAddress}`)}&timeframe=${encodeURIComponent(timeframe)}`;
     const res = await fetch(url);
@@ -201,7 +201,9 @@ function computeSimulatedPositionState({ pos, currentActiveBin, currentPrice, so
     const solPrice = solUsd > 0 ? solUsd : 180;
     const activeTvlSol = Math.max(50, activeTvlUsd / solPrice);
 
-    const poolDailyFeesSol = (vol24h * (feeRatePct / 100)) / solPrice;
+    const poolDailyFeesSol = poolDetail.fee != null && Number(poolDetail.fee) > 0
+      ? Number(poolDetail.fee) / solPrice
+      : (vol24h * (feeRatePct / 100)) / solPrice;
     const shareOfPool = Math.min(0.25, amountSol / activeTvlSol);
 
     // Only generate full fees while in range (or reduced fees if out of range)
