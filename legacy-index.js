@@ -610,7 +610,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
         },
         range_setup: {
           downside_pct: 90,
-          strategy: "bid_ask",
+          strategy: config.strategy.strategy || "spot",
           bin_step: pool.bin_step ?? pool.dlmm_params?.bin_step ?? null,
         },
         // Flat aliases for backwards compatibility:
@@ -742,7 +742,7 @@ STEPS:
 1. MANDOR EVIL PANDA STRICT RULES: Any surviving candidate has already passed 100% strict quantitative screening (Volume 30m >= $12k / 24h >= $1M, Bin Step 100/125, Market Cap >= $250k, and Bullish Supertrend 5m). Deploy into the top candidate immediately! Do NOT skip just because it is a single candidate.
 2. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
    MANDOR EVIL PANDA STRICT RULES:
-   - strategy: "bid_ask" (MUTLAK)
+   - strategy: "${deployStrategy}" (MUTLAK)
    - downside_pct: 90 (MUTLAK -90% range jaring ke bawah dari active bin)
    - bins_above: 0 (FIXED — single-side SOL)
    - amount_x: 0, amount_y: deploy amount in SOL.

@@ -318,13 +318,24 @@ export function recordPositionSnapshot(poolAddress, snapshot) {
 
   if (!db[poolAddress].snapshots) db[poolAddress].snapshots = [];
 
+  const currentBin = snapshot.current_bin ?? snapshot.active_bin ?? null;
+  const upperBin = snapshot.upper_bin ?? null;
+  const binOffset = (currentBin != null && upperBin != null) ? (currentBin - upperBin) : null;
+  const ageMin = Number(snapshot.age_minutes || 0);
+  const feesUsd = Number(snapshot.unclaimed_fees_usd || 0);
+  const feeRateUsdHr = (ageMin > 0 && feesUsd > 0) ? Number(((feesUsd / ageMin) * 60).toFixed(4)) : 0;
+
   db[poolAddress].snapshots.push({
     ts: new Date().toISOString(),
     position: snapshot.position,
+    strategy: snapshot.strategy ?? config.strategy?.strategy ?? "spot",
     pnl_pct: snapshot.pnl_pct ?? null,
     pnl_usd: snapshot.pnl_usd ?? null,
     in_range: snapshot.in_range ?? null,
     unclaimed_fees_usd: snapshot.unclaimed_fees_usd ?? null,
+    current_bin: currentBin,
+    bin_offset: binOffset,
+    fee_rate_usd_hr: feeRateUsdHr,
     minutes_out_of_range: snapshot.minutes_out_of_range ?? null,
     age_minutes: snapshot.age_minutes ?? null,
   });

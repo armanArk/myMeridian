@@ -212,7 +212,7 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
   });
 
   await t.test("Configured Screening Thresholds Match Mandor EP Rules", () => {
-    assert.equal(config.strategy.strategy, "bid_ask");
+    assert.equal(config.strategy.strategy, "spot");
     assert.equal(config.strategy.downsidePct, 90);
     assert.equal(config.screening.minVolatility, 1);
     assert.equal(config.screening.minVolume30m, 12000);
