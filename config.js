@@ -175,7 +175,7 @@ export const config = {
     oorCooldownHours:       u.oorCooldownHours       ?? 12,
     repeatDeployCooldownEnabled: u.repeatDeployCooldownEnabled ?? true,
     repeatDeployCooldownTriggerCount: u.repeatDeployCooldownTriggerCount ?? 1,
-    repeatDeployCooldownHours: u.repeatDeployCooldownHours ?? 4,
+    repeatDeployCooldownHours: u.repeatDeployCooldownHours ?? 1,
     repeatDeployCooldownScope: u.repeatDeployCooldownScope ?? "both", // pool | token | both
     repeatDeployCooldownAllCloses: u.repeatDeployCooldownAllCloses ?? true,
     repeatDeployCooldownMinFeeEarnedPct: u.repeatDeployCooldownMinFeeEarnedPct ?? u.repeatDeployCooldownMinFeeYieldPct ?? 0,
