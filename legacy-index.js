@@ -743,7 +743,7 @@ PRE-LOADED CANDIDATES (${passing.length} pools):
 ${candidateBlocks.join("\n\n")}
 
 STEPS:
-1. MANDOR EVIL PANDA STRICT RULES: Any surviving candidate has already passed 100% strict quantitative screening (Volume 30m >= $12k / 24h >= $1M, Bin Step 100/125, Market Cap >= $250k, and Bullish Supertrend 5m). Deploy into the top candidate immediately! Do NOT skip just because it is a single candidate.
+1. MANDOR EVIL PANDA STRICT RULES: Any surviving candidate has already passed 100% strict quantitative screening (Volume 30m >= $5k / 24h >= $1M, Bin Step 100/125, Market Cap >= $250k, and Bullish Supertrend 5m). Deploy into the top candidate immediately! Do NOT skip just because it is a single candidate.
 2. Call deploy_position (active_bin is pre-fetched above — no need to call get_active_bin).
    MANDOR EVIL PANDA STRICT RULES:
    - strategy: "${deployStrategy}" (MUTLAK)

@@ -149,7 +149,7 @@ export const config = {
     maxBotHoldersPct:  u.maxBotHoldersPct  ?? 30,  // max bot holder addresses % (Jupiter audit)
     maxTop10Pct:       u.maxTop10Pct       ?? 30,  // max top 10 holders concentration
     requireSolQuote:   u.requireSolQuote   !== false, // only trade pairs where quote is SOL
-    minVolume30m:      u.minVolume30m      ?? 12000, // min 30m volume ($)
+    minVolume30m:      u.minVolume30m      ?? 5000, // min 30m volume ($)
     minVolume24h:      u.minVolume24h      ?? 1_000_000, // min 24h volume ($)
     minVolatility:     u.minVolatility     ?? 1, // min volatility score
     maxInsidersPct:    u.maxInsidersPct    ?? 25, // max insider holders % (tolerates rugcheck/clustering false positives)

@@ -215,7 +215,7 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
     assert.equal(config.strategy.strategy, "bid_ask");
     assert.equal(config.strategy.downsidePct, 90);
     assert.equal(config.screening.minVolatility, 1);
-    assert.equal(config.screening.minVolume30m, 12000);
+    assert.equal(config.screening.minVolume30m, 5000);
     assert.equal(config.screening.minVolume24h, 1000000);
     assert.ok(config.screening.minMcap >= 250000, "minMcap should be at least 250k");
     assert.equal(config.screening.minBinStep, 100);
@@ -239,7 +239,7 @@ test("Evil Panda Strategy Rules Verification", async (t) => {
   await t.test("Screening - Mandor Mandatory 30m Volume & 24h Volume Rules", () => {
     const s = {
       ...config.screening,
-      minVolume30m: 12000,
+      minVolume30m: 5000,
       minVolume24h: 1000000,
       minTvl: 50000,
       minBinStep: 100,
