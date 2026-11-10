@@ -295,8 +295,12 @@ export async function runManagementCycle({ silent = false } = {}) {
               reason: `Evil Panda recovery exit [${triggerType}]: StochRSI ${stochRsiVal.toFixed(1)} >= 90 with PnL +${currentPnl.toFixed(2)}% after drawdown ${maxDd.toFixed(2)}% <= -10%`,
             };
           } else if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
+            // Evil Panda Convergence Rule:
+            // 1. Full Convergence (Upper BB touched + RSI(2) >= 90): definitive local top exit before dump.
+            // 2. Standalone RSI >= 90: requires profit to avoid premature exit on minor spike.
+            const isFullConvergence = ind.trigger === "bypass_bb_rsi";
             const hasProfit = (p.pnl_pct != null && p.pnl_pct > 0) || (p.pnl_usd != null && p.pnl_usd > 0);
-            if (hasProfit) {
+            if (isFullConvergence || hasProfit) {
               const triggerType = ind.trigger === "bypass_bb_rsi"
                 ? "bypass_bb_plus_rsi90"
                 : (ind.trigger === "bypass_rsi" || ind.trigger === "rsi_extreme" ? "bypass_rsi90" : (ind.trigger || "indicator_exit"));
@@ -610,7 +614,7 @@ export async function runScreeningCycle({ silent = false } = {}) {
         },
         range_setup: {
           downside_pct: 90,
-          strategy: config.strategy.strategy || "spot",
+          strategy: config.strategy.strategy || "bid_ask",
           bin_step: pool.bin_step ?? pool.dlmm_params?.bin_step ?? null,
         },
         // Flat aliases for backwards compatibility:
@@ -931,8 +935,12 @@ Summarize the current portfolio health, total fees earned, and performance of al
                 reason: `Evil Panda recovery exit [${triggerType}]: StochRSI ${stochRsiVal.toFixed(1)} >= 90 with PnL +${currentPnl.toFixed(2)}% after drawdown ${maxDd.toFixed(2)}% <= -10%`,
               };
             } else if (ind?.confirmed && !ind?.skipped && ind?.trigger) {
+              // Evil Panda Convergence Rule:
+              // 1. Full Convergence (Upper BB touched + RSI(2) >= 90): definitive local top exit before dump.
+              // 2. Standalone RSI >= 90: requires profit to avoid premature exit on minor spike.
+              const isFullConvergence = ind.trigger === "bypass_bb_rsi";
               const hasProfit = (p.pnl_pct != null && p.pnl_pct > 0) || (p.pnl_usd != null && p.pnl_usd > 0);
-              if (hasProfit) {
+              if (isFullConvergence || hasProfit) {
                 const triggerType = ind.trigger === "bypass_bb_rsi"
                   ? "bypass_bb_plus_rsi90"
                   : (ind.trigger === "bypass_rsi" || ind.trigger === "rsi_extreme" ? "bypass_rsi90" : (ind.trigger || "indicator_exit"));

@@ -199,7 +199,7 @@ export const config = {
 
   // ─── Strategy Mapping ───────────────────
   strategy: {
-    strategy:     u.strategy     ?? "spot",
+    strategy:     u.strategy     ?? "bid_ask",
     downsidePct:  u.downsidePct  ?? 90,
     minBinsBelow: strategyMinBinsBelow,
     maxBinsBelow: strategyMaxBinsBelow,
